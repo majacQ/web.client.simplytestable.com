@@ -13,6 +13,8 @@ use webignition\NormalisedUrl\NormalisedUrl;
 /**
  * 
  * @ORM\Entity
+ * @SerializerAnnotation\ExclusionPolicy("all")
+ * @ORM\Entity(repositoryClass="SimplyTestable\WebClientBundle\Repository\TaskRepository")
  */
 class Task {
     
@@ -23,8 +25,19 @@ class Task {
      * @ORM\Id
      * @ORM\Column(type="integer")
      * @ORM\GeneratedValue(strategy="AUTO")
+     * @SerializerAnnotation\Expose
      */
     private $id;
+    
+    
+    /**
+     * 
+     * @var int 
+     * 
+     * @ORM\Column(type="integer", nullable=false)
+     * @SerializerAnnotation\Expose
+     */    
+    private $taskId;
     
     
     /**
@@ -32,6 +45,7 @@ class Task {
      * @var string 
      * 
      * @ORM\Column(type="text", nullable=false)
+     * @SerializerAnnotation\Expose
      */
     private $url;
     
@@ -41,6 +55,7 @@ class Task {
      * @var string
      * 
      * @ORM\Column(type="string", nullable=false)
+     * @SerializerAnnotation\Expose
      */
     private $state;
     
@@ -50,6 +65,7 @@ class Task {
      * @var string
      * 
      * @ORM\Column(type="string", nullable=true)
+     * @SerializerAnnotation\Expose
      */
     private $worker;
     
@@ -59,6 +75,7 @@ class Task {
      * @var string
      * 
      * @ORM\Column(type="string", nullable=false)
+     * @SerializerAnnotation\Expose
      */
     private $type;
     
@@ -68,6 +85,7 @@ class Task {
      * @var SimplyTestable\WebClientBundle\Entity\TimePeriod
      * 
      * @ORM\OneToOne(targetEntity="SimplyTestable\WebClientBundle\Entity\TimePeriod", cascade={"persist"})
+     * @SerializerAnnotation\Expose
      */
     private $timePeriod;
     
@@ -76,7 +94,8 @@ class Task {
      *
      * @var TaskOutput
      * 
-     * @ORM\OneToOne(targetEntity="SimplyTestable\WebClientBundle\Entity\Task\Output", cascade={"persist"})
+     * @ORM\ManyToOne(targetEntity="SimplyTestable\WebClientBundle\Entity\Task\Output")
+     * @SerializerAnnotation\Expose
      */
     private $output;
     
@@ -93,24 +112,6 @@ class Task {
     
     public function __construct() {
         $this->timePeriod = new TimePeriod();
-    }
-    
-    
-    /**
-     *
-     * @param Task $task
-     * @return boolean 
-     */
-    public function equals(Task $task) {
-        if ((string)$this->getUrl() != (string)$task->getUrl()) {
-            return false;
-        }
-        
-        if ($this->getType() != $task->getType()) {
-            return false;
-        }
-        
-        return true;
     }
     
 
@@ -147,6 +148,22 @@ class Task {
     {
         return $this->url;
     }
+    
+    
+    /**
+     * 
+     * @return string
+     */
+    public function getNormalisedUrl() {
+        $url = (string)$this->getUrl();
+        if ($url == '') {
+            return $url;
+        }
+        
+        $normalisedUrl = new NormalisedUrl($url);
+        return (string)$normalisedUrl;
+    }
+    
 
     /**
      * Set state
@@ -284,5 +301,38 @@ class Task {
     public function getTest()
     {
         return $this->test;
+    }
+
+    /**
+     * Set taskId
+     *
+     * @param integer $taskId
+     * @return Task
+     */
+    public function setTaskId($taskId)
+    {
+        $this->taskId = $taskId;
+    
+        return $this;
+    }
+
+    /**
+     * Get taskId
+     *
+     * @return integer 
+     */
+    public function getTaskId()
+    {
+        return $this->taskId;
+    }
+    
+    
+    /**
+     *
+     * @return boolean
+     */
+    public function hasOutput()
+    {
+        return !is_null($this->getOutput());
     }
 }

@@ -2,59 +2,90 @@
 
 namespace SimplyTestable\WebClientBundle\Controller;
 
-use webignition\NormalisedUrl\NormalisedUrl;
+use webignition\IsHttpStatusCode\IsHttpStatusCode;
 
-use Symfony\Bundle\FrameworkBundle\Controller\Controller;
-
-class TestController extends Controller
-{
-    const DEFAULT_WEBSITE_SCHEME = 'http';
+class TestController extends BaseController
+{    
+    /**
+     *
+     * @var \SimplyTestable\WebClientBundle\Services\TestQueueService
+     */
+    private $testQueueService;
     
-    public function startAction()
-    {        
-        if (!$this->hasWebsite()) {
-            $this->get('session')->setFlash('test_start_error', 'non-blank string');
-            return $this->redirect($this->generateUrl('app', array(), true));
-        }
+    
+    public function queuedStatusAction($website) {        
+        $normalisedWebsite = new \webignition\NormalisedUrl\NormalisedUrl($website);        
+        $result = ($this->getTestQueueService()->contains($this->getUser(), (string)$normalisedWebsite)) ? 'queued' : 'not queued';
         
-        $jsonResponseObject = $this->getTestService()->start($this->getWebsite())->getContentObject();        
-        return $this->redirect($this->generateUrl(
-            'app_progress',
-            array(
-                'website' => $jsonResponseObject->website,
-                'test_id' => $jsonResponseObject->id
-            ),
-            true
-        ));
+        return new \Symfony\Component\HttpFoundation\Response('"'.$result.'"');       
+    }
+    
+    
+    public function cancelQueuedAction($website) {        
+        $normalisedWebsite = new \webignition\NormalisedUrl\NormalisedUrl($website);        
+        if ($this->getTestQueueService()->contains($this->getUser(), (string)$normalisedWebsite)) {
+            $this->getTestQueueService()->dequeue($this->getUser(), (string)$normalisedWebsite);
+            $this->get('session')->setFlash('test_cancelled_queued_website', (string)$normalisedWebsite);
+        }        
+        
+        return $this->redirect($this->generateUrl('app', array(), true));
     }
     
     
     public function cancelAction()
     {
-        if (!$this->hasWebsite()) {
-            $this->get('session')->setFlash('test_start_error', '');
-            return $this->redirect($this->generateUrl('app', array(), true));
-        }
+        $this->getTestService()->setUser($this->getUser());
         
-        if ($this->getCoreApplicationService()->testCancel($this->getWebsite(), $this->getTestId())) {
+        try {
+            $test = $this->getTestService()->get($this->getWebsite(), $this->getTestId(), $this->getUser());                        
+            $this->getTestService()->cancel($test);
             return $this->redirect($this->generateUrl(
                 'app_results',
+                array(
+                    'website' => $test->getWebsite(),
+                    'test_id' => $test->getTestId()
+                ),
+                true
+            ));           
+        } catch (\SimplyTestable\WebClientBundle\Exception\UserServiceException $userServiceException) {
+            return $this->redirect($this->generateUrl(
+                'app',
+                array(),
+                true
+            ));
+        } catch (\SimplyTestable\WebClientBundle\Exception\WebResourceException $webResourceException) {
+            $this->getLogger()->err('TestController::cancelAction:webResourceException ['.$webResourceException->getResponse()->getStatusCode().']');            
+            
+            return $this->redirect($this->generateUrl(
+                'app_progress',
                 array(
                     'website' => $this->getWebsite(),
                     'test_id' => $this->getTestId()
                 ),
                 true
-            ));       
-        }
-    }
+            ));             
+
+        } catch (\Guzzle\Http\Exception\CurlException $curlException)  {
+            $this->getLogger()->err('TestController::cancelAction:curlException ['.$curlException->getErrorNo().']');
+            
+            return $this->redirect($this->generateUrl(
+                'app_progress',
+                array(
+                    'website' => $this->getWebsite(),
+                    'test_id' => $this->getTestId()
+                ),
+                true
+            ));
+        }     
+    } 
     
     
     /**
      *
      * @return boolean
      */
-    private function hasWebsite() {
-        return $this->getWebsite() != '';
+    protected function hasWebsite() {
+        return trim($this->getRequestValue('website')) != '';
     }
     
     
@@ -62,19 +93,14 @@ class TestController extends Controller
      *
      * @return string
      */
-    private function getWebsite() {
-        $website = $this->getRequestValue('website');
-        if (is_null($website)) {
-            return $website;
+    protected function getWebsite() {
+        $websiteUrl = $this->getNormalisedRequestUrl();
+        if (!$websiteUrl) {
+            return null;
         }
         
-        $url = new NormalisedUrl($website);
-        if (!$url->hasScheme()) {            
-            $url->setScheme(self::DEFAULT_WEBSITE_SCHEME);
-        }
-        
-        return (string)$url;
-    }
+        return (string)$websiteUrl; 
+    }    
     
     
     /**
@@ -86,17 +112,27 @@ class TestController extends Controller
     }
     
     
-    private function getRequestValue($name, $default = null) {
-        $value = trim($this->get('request')->get($name));        
-        return ($value == '') ? $default : $value;
-    }
-    
-    
     /**
      *
      * @return \SimplyTestable\WebClientBundle\Services\TestService
      */
-    private function getTestService() {
+    protected function getTestService() {
         return $this->container->get('simplytestable.services.testservice');
+    } 
+    
+    
+    /**
+     *
+     * @return \SimplyTestable\WebClientBundle\Services\TestQueueService
+     */
+    protected function getTestQueueService() {
+        if (is_null($this->testQueueService)) {
+            $this->testQueueService = $this->container->get('simplytestable.services.testqueueservice');
+            $this->testQueueService->setApplicationRootDirectory($this->container->get('kernel')->getRootDir());
+                    
+        }
+        
+        return $this->testQueueService;
+
     }
 }
