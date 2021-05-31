@@ -1,0 +1,276 @@
+<?php
+
+namespace App\Controller\View\Test\Results;
+
+use App\Entity\Task\Task;
+use App\Exception\CoreApplicationRequestException;
+use App\Exception\InvalidContentTypeException;
+use App\Exception\InvalidCredentialsException;
+use App\Model\RemoteTest\RemoteTest;
+use App\Model\Test\Task\ErrorTaskMapCollection;
+use App\Services\CacheableResponseFactory;
+use App\Services\DefaultViewParameters;
+use App\Services\RemoteTestService;
+use App\Services\SystemUserService;
+use App\Services\TaskCollectionFilterService;
+use App\Services\TaskService;
+use App\Services\TestService;
+use App\Services\UrlViewValuesService;
+use App\Services\UserManager;
+use Symfony\Component\HttpFoundation\RedirectResponse;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Routing\RouterInterface;
+use Twig_Environment;
+
+class ByTaskTypeController extends AbstractResultsController
+{
+    const FILTER_BY_PAGE = 'by-page';
+    const FILTER_BY_ERROR = 'by-error';
+    const DEFAULT_FILTER = self::FILTER_BY_ERROR;
+
+    /**
+     * @var TestService
+     */
+    private $testService;
+
+    /**
+     * @var RemoteTestService
+     */
+    private $remoteTestService;
+
+    /**
+     * @var TaskService
+     */
+    private $taskService;
+
+    /**
+     * @var TaskCollectionFilterService
+     */
+    private $taskCollectionFilterService;
+
+    /**
+     * @var UrlViewValuesService
+     */
+    private $urlViewValues;
+
+    /**
+     * @var UserManager
+     */
+    private $userManager;
+
+    /**
+     * @var string[]
+     */
+    private $allowedFilters = [
+        self::FILTER_BY_PAGE,
+        self::FILTER_BY_ERROR
+    ];
+
+    public function __construct(
+        RouterInterface $router,
+        Twig_Environment $twig,
+        DefaultViewParameters $defaultViewParameters,
+        CacheableResponseFactory $cacheableResponseFactory,
+        UrlViewValuesService $urlViewValues,
+        UserManager $userManager,
+        TestService $testService,
+        RemoteTestService $remoteTestService,
+        TaskService $taskService,
+        TaskCollectionFilterService $taskCollectionFilterService
+    ) {
+        parent::__construct($router, $twig, $defaultViewParameters, $cacheableResponseFactory);
+
+        $this->testService = $testService;
+        $this->remoteTestService = $remoteTestService;
+        $this->taskService = $taskService;
+        $this->taskCollectionFilterService = $taskCollectionFilterService;
+        $this->urlViewValues = $urlViewValues;
+        $this->userManager = $userManager;
+    }
+
+    /**
+     * @param Request $request
+     * @param string $website
+     * @param int $test_id
+     * @param string $task_type
+     * @param string|null $filter
+     *
+     * @return RedirectResponse|Response
+     *
+     * @throws CoreApplicationRequestException
+     * @throws InvalidContentTypeException
+     * @throws InvalidCredentialsException
+     */
+    public function indexAction(Request $request, $website, $test_id, $task_type, $filter = null)
+    {
+        $user = $this->userManager->getUser();
+
+        $test = $this->testService->get($website, $test_id);
+        $remoteTest = $this->remoteTestService->get();
+
+        $requestTaskType = str_replace('+', ' ', $task_type);
+        $selectedTaskType = $this->getSelectedTaskType($remoteTest, $requestTaskType);
+
+        if (empty($selectedTaskType)) {
+            return new RedirectResponse($this->generateUrl(
+                'view_test_results',
+                [
+                    'website' => $website,
+                    'test_id' => $test_id
+                ]
+            ));
+        }
+
+        if (Task::TYPE_JS_STATIC_ANALYSIS === $selectedTaskType) {
+            return new RedirectResponse($this->generateUrl(
+                'view_test_results',
+                [
+                    'website' => $website,
+                    'test_id' => $test_id
+                ]
+            ));
+        }
+
+        $hasValidFilter = in_array($filter, $this->allowedFilters);
+
+        if (!$hasValidFilter) {
+            return new RedirectResponse($this->generateUrl(
+                'view_test_results_by_task_type_filter',
+                [
+                    'website' => $website,
+                    'test_id' => $test_id,
+                    'task_type' => strtolower(str_replace(' ', '+', $selectedTaskType)),
+                    'filter' => self::DEFAULT_FILTER
+                ]
+            ));
+        }
+
+        if ($website !== (string)$test->getWebsite()) {
+            return new RedirectResponse($this->generateUrl(
+                'view_test_results_by_task_type_filter',
+                [
+                    'website' => $remoteTest->getWebsite(),
+                    'test_id' => $test_id,
+                    'task_type' => str_replace(' ', '+', $request->attributes->get('task_type')),
+                    'filter' => $filter
+                ]
+            ));
+        }
+
+        $response = $this->cacheableResponseFactory->createResponse($request, [
+            'website' => $website,
+            'test_id' => $test_id,
+            'task_type' => $selectedTaskType,
+            'filter' => $filter
+        ]);
+
+        if (Response::HTTP_NOT_MODIFIED === $response->getStatusCode()) {
+            return $response;
+        }
+
+        if ($this->requiresPreparation($remoteTest, $test)) {
+            return new RedirectResponse($this->generateUrl(
+                'view_test_results_preparing',
+                [
+                    'website' => $website,
+                    'test_id' => $test_id,
+                ]
+            ));
+        }
+
+        $this->taskCollectionFilterService->setTest($test);
+        $this->taskCollectionFilterService->setOutcomeFilter('with-errors');
+        $this->taskCollectionFilterService->setTypeFilter($selectedTaskType);
+
+        $this->taskService->getCollection($test);
+        $filteredRemoteTaskIds = $this->taskCollectionFilterService->getRemoteIds();
+
+        $filteredTasks = $this->taskService->getCollection($test, $filteredRemoteTaskIds);
+        $this->taskService->setParsedOutputOnCollection($filteredTasks);
+
+        $tasks = $this->sortTasks($filteredTasks);
+
+        $errorTaskMaps = new ErrorTaskMapCollection($tasks);
+        $errorTaskMaps->sortMapsByOccurrenceCount();
+        $errorTaskMaps->sortByOccurrenceCount();
+
+        return $this->renderWithDefaultViewParameters(
+            'test-results-by-task-type.html.twig',
+            [
+                'is_owner' => $this->remoteTestService->owns($user),
+                'is_public_user_test' => $test->getUser() === SystemUserService::getPublicUser()->getUsername(),
+                'website' => $this->urlViewValues->create($website),
+                'test' => $test,
+                'task_type' => $selectedTaskType,
+                'filter' => $hasValidFilter ? $filter : self::DEFAULT_FILTER,
+                'tasks' => $tasks,
+                'error_task_maps' => $errorTaskMaps
+            ],
+            $response
+        );
+    }
+
+    /**
+     * @param Task[] $tasks
+     *
+     * @return Task[]
+     */
+    private function sortTasks($tasks)
+    {
+        $index = [];
+
+        foreach ($tasks as $taskIndex => $task) {
+            $index[$taskIndex] = $task->getOutput()->getResult()->getErrorCount();
+        }
+
+        arsort($index);
+
+        $sortedTasks = [];
+
+        foreach ($index as $taskIndex => $value) {
+            $sortedTasks[$taskIndex] = $tasks[$taskIndex];
+        }
+
+        return $sortedTasks;
+    }
+
+    /**
+     * @param RemoteTest $remoteTest
+     * @param string $requestTaskType
+     *
+     * @return string|null
+     */
+    private function getSelectedTaskType(RemoteTest $remoteTest, $requestTaskType)
+    {
+        $remoteTaskTypes = $remoteTest->getTaskTypes();
+
+        foreach ($remoteTaskTypes as $remoteTaskType) {
+            if (strtolower($remoteTaskType) == strtolower($requestTaskType)) {
+                return $remoteTaskType;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function getRequestWebsiteMismatchResponse(RouterInterface $router, Request $request)
+    {
+        $remoteTest = $this->remoteTestService->get();
+        $filter = trim($request->attributes->get('filter'));
+        $hasValidFilter = in_array($filter, $this->allowedFilters);
+
+        return new RedirectResponse($this->generateUrl(
+            'view_test_results_by_task_type_filter',
+            [
+                'website' => $remoteTest->getWebsite(),
+                'test_id' => $request->attributes->get('test_id'),
+                'task_type' => str_replace(' ', '+', $request->attributes->get('task_type')),
+                'filter' => $hasValidFilter ? $filter : self::DEFAULT_FILTER
+            ]
+        ));
+    }
+}
