@@ -3,6 +3,7 @@
 namespace SimplyTestable\WebClientBundle\Entity\Test;
 
 use Doctrine\ORM\Mapping as ORM;
+use JMS\SerializerBundle\Annotation as SerializerAnnotation;
 
 use SimplyTestable\WebClientBundle\Entity\TimePeriod;
 use SimplyTestable\WebClientBundle\Entity\Task\Task;
@@ -20,6 +21,8 @@ use webignition\NormalisedUrl\NormalisedUrl;
  *         @ORM\Index(name="testId_idx", columns={"testId"})
  *     }
  * )
+ * @ORM\Entity(repositoryClass="SimplyTestable\WebClientBundle\Repository\TestRepository")
+ * @SerializerAnnotation\ExclusionPolicy("all")
  */
 class Test {
     
@@ -31,6 +34,7 @@ class Test {
      * @ORM\Id
      * @ORM\Column(type="integer")
      * @ORM\GeneratedValue(strategy="AUTO")
+     * @SerializerAnnotation\Expose
      */
     private $id;
     
@@ -39,6 +43,7 @@ class Test {
      * @var integer
      * 
      * @ORM\Column(type="integer", nullable=false)
+     * @SerializerAnnotation\Expose
      */
     private $testId;
     
@@ -48,6 +53,7 @@ class Test {
      * @var string
      * 
      * @ORM\Column(type="string", nullable=false)
+     * @SerializerAnnotation\Expose
      */
     private $user;    
     
@@ -57,6 +63,7 @@ class Test {
      * @var NormalisedUrl 
      * 
      * @ORM\Column(type="string", nullable=false)
+     * @SerializerAnnotation\Expose
      */
     private $website;
     
@@ -66,6 +73,7 @@ class Test {
      * @var string
      * 
      * @ORM\Column(type="string", nullable=false)
+     * @SerializerAnnotation\Expose
      */
     private $state;
     
@@ -81,11 +89,28 @@ class Test {
     
     /**
      *
+     * @var string
+     * 
+     * @ORM\Column(type="text", nullable=true)
+     */    
+    private $taskIdCollection;
+    
+    
+    /**
+     *
+     * @var array
+     */
+    private $taskIds = null;
+    
+    
+    /**
+     *
      * @var \Doctrine\Common\Collections\Collection
      * 
      * @ORM\Column(type="array", nullable=false)
+     * @SerializerAnnotation\Expose
      */
-    private $taskTypes;    
+    private $taskTypes;
     
     
     /**
@@ -93,8 +118,16 @@ class Test {
      * @var SimplyTestable\WebClientBundle\Entity\TimePeriod
      * 
      * @ORM\OneToOne(targetEntity="SimplyTestable\WebClientBundle\Entity\TimePeriod", cascade={"persist"})
+     * @SerializerAnnotation\Expose
      */
     private $timePeriod;
+    
+    
+    /**
+     *
+     * @ORM\Column(type="string", nullable=true)
+     */
+    private $type;
     
     
     /**
@@ -102,6 +135,13 @@ class Test {
      * @var int
      */
     private $urlCount;
+    
+    
+    /**
+     *
+     * @var array
+     */
+    private $taskIdIndex;
     
     
     /**
@@ -119,9 +159,28 @@ class Test {
         
         if ($this->getTaskCount() == 0) {
             return 100;
-        }        
+        }
         
-        return (floor($this->getTaskCountByState('completed') / $this->getTaskCount() * 100));        
+        return (floor($this->getFinishedTaskCount() / $this->getTaskCount() * 100));        
+    }
+    
+    
+    private function getFinishedTaskCount() {
+        $finishedTaskStates = array(
+            'completed',
+            'failed',
+            'failed-no-retry-available',
+            'failed-retry-available',
+            'failed-retry-limit-reached'
+        );
+        
+        $finishedTaskCount = 0;
+        
+        foreach ($finishedTaskStates as $finishedTaskState) {
+            $finishedTaskCount += $this->getTaskCountByState($finishedTaskState);
+        }
+        
+        return $finishedTaskCount;
     }
     
     
@@ -139,13 +198,13 @@ class Test {
      * @param string $state
      * @return int 
      */
-    public function getTaskCountByState($state) {
+    public function getTaskCountByState($state) {        
         if ($this->getTaskCount() == 0) {
             return 0;
         }
         
         $total = 0;
-        foreach ($this->getTasks() as $task) {
+        foreach ($this->getTasks() as $task) {            
             if ($task->getState() == $state) {
                 $total++;
             }
@@ -180,6 +239,7 @@ class Test {
     public function __construct()
     {
         $this->tasks = new \Doctrine\Common\Collections\ArrayCollection();
+        $this->taskIds = new \Doctrine\Common\Collections\ArrayCollection();
         $this->timePeriod = new TimePeriod();
     }
     
@@ -371,7 +431,7 @@ class Test {
      * @return boolean 
      */
     public function hasTask(Task $task) {
-        return $this->getTask($task) !== false;
+        return array_key_exists($task->getTaskId(), $this->getTaskIdIndex());
     }
     
     
@@ -383,11 +443,110 @@ class Test {
     public function getTask(Task $task) {
         foreach ($this->getTasks() as $comparatorTask) {
             /* @var $comparatorTask Task */
-            if ($comparatorTask->getUrl() == $task->getUrl() && $comparatorTask->getType() == $task->getType()) {
+            if ($comparatorTask->getUrl() == $task->getUrl() && $comparatorTask->getType() == $task->getType() && $comparatorTask->getTaskId() == $task->getTaskId()) {
                 return $comparatorTask;
             }
         }
         
         return false;        
     }
+    
+    private function getTaskIdIndex() {
+        if (is_null($this->taskIdIndex)) {
+            $this->taskIdIndex = array();
+            foreach ($this->getTasks() as $task) {
+                $this->taskIdIndex[$task->getTaskId()] = true;
+            }
+        }
+        
+        return $this->taskIdIndex;
+    }
+    
+    
+    public function clearTasks()
+    {
+        $this->tasks = new \Doctrine\Common\Collections\ArrayCollection();
+    }
+    
+    
+    /**
+     * Get tasks
+     *
+     * @return array
+     */
+    public function getTaskIds()
+    {
+        if (is_null($this->taskIds)) {
+            if (is_null($this->getTaskIdCollection()) || $this->getTaskIdCollection() == '') {
+                $this->taskIds = array();
+            } else {
+                $this->taskIds = array();
+                $rawTaskIds = explode(',', $this->getTaskIdCollection());
+
+                foreach ($rawTaskIds as $rawTaskId) {
+                    $this->taskIds[] = (int)$rawTaskId;
+                }                
+            }
+        }
+        
+        return $this->taskIds;
+    }    
+    
+    
+    /**
+     *
+     * @return boolean
+     */
+    public function hasTaskIds() {                
+        return count($this->getTaskIds()) > 0;
+    }
+    
+    
+    /**
+     * Set taskIdCollection
+     *
+     * @param string $type
+     * @return Test
+     */
+    public function setTaskIdColletion($taskIdCollection)
+    {        
+        $this->taskIdCollection = $taskIdCollection;
+        $this->taskIds = null;
+    
+        return $this;
+    }
+
+    /**
+     * Get taskIdCollection
+     *
+     * @return string 
+     */
+    public function getTaskIdCollection()
+    {
+        return $this->taskIdCollection;
+    }     
+    
+    
+    /**
+     * Set type
+     *
+     * @param string $type
+     * @return Test
+     */
+    public function setType($type)
+    {
+        $this->type = $type;
+    
+        return $this;
+    }
+
+    /**
+     * Get type
+     *
+     * @return string 
+     */
+    public function getType()
+    {
+        return $this->type;
+    }    
 }

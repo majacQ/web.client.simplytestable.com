@@ -3,256 +3,500 @@
 namespace SimplyTestable\WebClientBundle\Controller;
 
 use SimplyTestable\WebClientBundle\Entity\Test\Test;
+use SimplyTestable\WebClientBundle\Entity\Task\Task;
 use Symfony\Bundle\FrameworkBundle\Controller\Controller;
 use Symfony\Component\HttpFoundation\Response;
+use SimplyTestable\WebClientBundle\Exception\UserServiceException;
 
-class AppController extends BaseViewController
-{
-    private $progressStates = array(
-        'new',
-        'preparing',
-        'queued',        
-        'in-progress'        
+class AppController extends TestViewController
+{       
+    private $testFinishedStates = array(
+        'cancelled',
+        'completed',
+        'no-sitemap',
     );
     
-    private $completedStates = array(
+    private $taskFinishedStates = array(
         'cancelled',
-        'completed'
-    );
+        'completed',
+        'failed-no-retry-available',
+        'failed-retry-available',
+        'failed-retry-limit-reached',
+        'skipped'
+    );    
     
     private $testStateLabelMap = array(
         'new' => 'New',
         'queued' => 'Queued',
-        'preparing' => 'Running',
+        'preparing' => 'Discovering URLs to test',
         'in-progress' => 'Running'        
     );
     
     private $testStateIconMap = array(
         'new' => 'icon-off',
         'queued' => 'icon-off',
-        'preparing' => 'icon-play-circle',
+        'queued-for-assignment' => 'icon-off',
+        'preparing' => 'icon-search',
         'in-progress' => 'icon-play-circle'        
-    );    
+    );
+    
+    private $testOptionNamesAndDefaultValues = array(
+        'html-validation' => 1,
+        'css-validation' => 1,
+        'css-validation-ignore-warnings' => 1,
+        'css-validation-ignore-common-cdns' => 1,
+        'css-validation-vendor-extensions' => "warn",
+        'css-validation-domains-to-ignore' => "",
+        'js-static-analysis' => 1,
+        'js-static-analysis-ignore-common-cdns' => 1,
+        'js-static-analysis-domains-to-ignore' => "",
+    ); 
+    
+    
+    /**
+     *
+     * @var \SimplyTestable\WebClientBundle\Services\TestQueueService
+     */
+    private $testQueueService;
+    
     
     public function indexAction()
-    {
-        return $this->render('SimplyTestableWebClientBundle:App:index.html.twig', array(            
-            'test_input_action_url' => $this->generateUrl('test_start'),
-            'test_start_error' => $this->hasFlash('test_start_error')
+    {        
+        if ($this->isUsingOldIE()) {
+            return $this->forward('SimplyTestableWebClientBundle:App:outdatedBrowser');
+        }
+        
+        $templateName = 'SimplyTestableWebClientBundle:App:index.html.twig';
+        $templateLastModifiedDate = $this->getTemplateLastModifiedDate($templateName);
+        
+        $testOptions = $this->getPersistentValues($this->testOptionNamesAndDefaultValues);
+        
+        $testStartError = $this->getFlash('test_start_error');        
+        
+        $recentTests = $this->getRecentTests(9);
+        $recentTestsHash = md5(json_encode($recentTests));        
+        
+        $testCancelledQueuedWebsite = $this->getFlash('test_cancelled_queued_website');
+        
+        $cacheValidatorIdentifier = $this->getCacheValidatorIdentifier(array(
+            'test_start_error' => $testStartError,
+            'recent_tests_hash' => $recentTestsHash,
+            'test_cancelled_queued_website' => $testCancelledQueuedWebsite
         ));
+        
+        $cacheValidatorHeaders = $this->getCacheValidatorHeadersService()->get($cacheValidatorIdentifier);
+        
+        if ($this->isProduction() && $cacheValidatorHeaders->getLastModifiedDate() == $templateLastModifiedDate) {            
+            $response = $this->getCachableResponse(new Response(), $cacheValidatorHeaders);            
+            if ($response->isNotModified($this->getRequest())) {
+                return $response;
+            }
+        }
+        
+        $cacheValidatorHeaders->setLastModifiedDate($templateLastModifiedDate);
+        $this->getCacheValidatorHeadersService()->store($cacheValidatorHeaders);
+        
+        return $this->render($templateName, array(            
+            'test_input_action_url' => $this->generateUrl('test_start'),
+            'test_start_error' => $testStartError,
+            'public_site' => $this->container->getParameter('public_site'),
+            'user' => $this->getUser(),
+            'is_logged_in' => !$this->getUserService()->isPublicUser($this->getUser()),
+            'recent_tests' => $recentTests,
+            'website' => idn_to_utf8($this->getPersistentValue('website')),
+            'available_task_types' => $this->getAvailableTaskTypes(),
+            'test_options' => $testOptions,
+            'css_validation_ignore_common_cdns' => $this->getCssValidationCommonCdnsToIgnore(),
+            'js_static_analysis_ignore_common_cdns' => $this->getCssValidationCommonCdnsToIgnore(),
+            'test_options_title' => 'What do you want to check?',
+            'test_cancelled_queued_website' => $testCancelledQueuedWebsite
+        ));         
+
+        return $this->getCachableResponse($this->render($templateName, array(            
+            'test_input_action_url' => $this->generateUrl('test_start'),
+            'test_start_error' => $hasTestStartError,
+            'test_start_error_blocked_website' => $hasTestStartBlockedWebsiteError,
+            'public_site' => $this->container->getParameter('public_site'),
+            'user' => $this->getUser(),
+            'is_logged_in' => !$this->getUserService()->isPublicUser($this->getUser()),
+            'recent_tests' => $recentTests
+        )), $cacheValidatorHeaders);        
     }
     
     
-    public function progressAction($website, $test_id) {
-        if (!$this->getTestService()->has($website, $test_id)) {
-            return $this->redirect($this->generateUrl('app', array(), true));
+    /**
+     * 
+     * @return array
+     */
+    private function getCssValidationCommonCdnsToIgnore() {
+        if (!$this->container->hasParameter('css-validation-ignore-common-cdns')) {
+            return array();
         }
-
-        $test = $this->getTestService()->get($website, $test_id);
         
-        if (in_array($test->getState(), $this->completedStates)) {
-            return $this->redirect($this->getResultsUrl($website, $test_id));
+        return $this->container->getParameter('css-validation-ignore-common-cdns');
+    }
+    
+    
+    /**
+     * 
+     * @return array
+     */
+    private function getAvailableTaskTypes() {
+        $allAvailableTaskTypes = $this->container->getParameter('available_task_types');
+        $availableTaskTypes = $allAvailableTaskTypes['default'];
+        
+        if ($this->isEarlyAccessUser() && is_array($allAvailableTaskTypes['early_access'])) {
+            $availableTaskTypes = array_merge($availableTaskTypes, $allAvailableTaskTypes['early_access']);
+        }
+        
+        return $availableTaskTypes;
+    }
+    
+    
+    /**
+     * 
+     * @return array
+     */
+    private function getRecentTests($limit = 3) {
+        if (!$this->isLoggedIn()) {
+            return array();
+        }
+        
+        $jsonResource = $this->getTestService()->getList($limit);
+        
+        if (!$jsonResource instanceof \webignition\WebResource\JsonDocument\JsonDocument) {
+            return array();
+        }
+        
+        $recentTests = json_decode($jsonResource->getContent(), true);
+        
+        foreach ($recentTests as $testIndex => $test) {            
+            $recentTests[$testIndex]['website_label'] = $this->getWebsiteLabel($recentTests[$testIndex]['website']);
+            $recentTests[$testIndex]['state_icon'] = $this->getTestStateIcon($recentTests[$testIndex]['state']);
+            $recentTests[$testIndex]['state_label_class'] = $this->getTestStateLabelClass($recentTests[$testIndex]['state']);
+            $recentTests[$testIndex]['completion_percent'] = $this->getCompletionPercent($test);
+        }
+        
+        return $recentTests;
+    }
+    
+    
+    /**
+     * Get presentation label for a website - canonical url minus scheme minus trailing slash
+     * 
+     * @param string $website
+     * @return string
+     */
+    private function getWebsiteLabel($website) {
+        $websiteUrl = new \webignition\Url\Url($website);
+        
+        $websiteLabel = preg_replace('/^'.$websiteUrl->getScheme().':\/\//', '', $website);
+        $websiteLabel = preg_replace('/\/$/', '', $websiteLabel);
+        
+        return $websiteLabel;
+    }
+    
+    
+    /**
+     * 
+     * @param string $state
+     * @return string
+     */
+    private function getTestStateIcon($state) {
+        switch ($state) {
+            case 'new':
+                return 'icon-off';
+            
+            case 'queued':
+                return 'icon-off';
+            
+            case 'preparing':
+                return 'icon-cog';
+            
+            case 'in-progress':
+                return 'icon-play-circle';
+            
+            case 'completed':
+                return 'icon-bar-chart';
+            
+            case 'cancelled':
+                return 'icon-bar-chart';
+        }       
+    }
+    
+     /**
+     * 
+     * @param string $state
+     * @return string
+     */
+    private function getTestStateLabelClass($state) {        
+        switch ($state) {
+            case 'new':
+                return '';
+            
+            case 'queued':
+                return 'info';
+            
+            case 'preparing':
+                return 'warning';
+            
+            case 'in-progress':
+                return 'warning';
+            
+            case 'completed':
+                return 'success';
+            
+            case 'cancelled':
+                return 'success';
+        }        
+    }
+    
+    
+    public function queuedAction($website) {
+        if ($this->isUsingOldIE()) {
+            return $this->forward('SimplyTestableWebClientBundle:App:outdatedBrowser');
+        } 
+        
+        $normalisedWebsite = new \webignition\NormalisedUrl\NormalisedUrl($website);
+        
+        if (!$this->getTestQueueService()->contains($this->getUser(), (string)$normalisedWebsite)) {
+            return $this->redirect($this->generateUrl('app_website', array(
+                'website' => (string)$normalisedWebsite,
+            ), true));            
+        }
+        
+        $queuedTest = $this->getTestQueueService()->retrieve($this->getUser(), (string)$normalisedWebsite);
+        
+        $remoteTestSummary = $this->getTestQueueService()->getRemoteTestSummary($this->getUser(), (string)$normalisedWebsite);
+        $taskTypes = array();
+        foreach ($remoteTestSummary->task_types as $taskTypeObject) {
+            $taskTypes[] = $taskTypeObject->name;
         }
         
         $viewData = array(
-            'this_url' => $this->getProgressUrl($website, $test_id),
+            'website' => idn_to_utf8($website),
+            'this_url' => $this->getQueuedUrl($website),
             'test_input_action_url' => $this->generateUrl('test_cancel', array(
                 'website' => $website,
-                'test_id' => $test_id
+                'test_id' => null
             )),
-            'test' => $test,
-            'urls' => $this->getTestUrls($test),
-            'state_label' => $this->testStateLabelMap[$test->getState()].': ',
-            'state_icon' => $this->testStateIconMap[$test->getState()],
-            'taskCountByState' => $this->getTaskCountByState($test),
-            'completionPercent' => $test->getCompletionPercent(),
-            'testId' => $test_id
-        );
+            'remote_test_summary' => $this->getRemoteTestSummaryArray($remoteTestSummary),
+            'task_count_by_state' => $this->getTaskCountByState($remoteTestSummary),
+            'state_label' => $this->testStateLabelMap['queued'].': ',
+            'state_icon' => $this->testStateIconMap['queued'],
+            'completion_percent' => 0,
+            'public_site' => $this->container->getParameter('public_site'),
+            'user' => $this->getUser(),
+            'is_logged_in' => !$this->getUserService()->isPublicUser($this->getUser()),
+            'task_types' => $taskTypes,
+            'reason' => $queuedTest['reason']
+        ); 
         
         $this->setTemplate('SimplyTestableWebClientBundle:App:progress.html.twig');
         return $this->sendResponse($viewData);
     }
+
+        
+    private function getRemoteTestSummaryArray($remoteTestSummary) {        
+        $remoteTestSummaryArray = (array)$remoteTestSummary;
+        
+        foreach ($remoteTestSummaryArray as $key => $value) {            
+            if ($value instanceof \stdClass){
+                $remoteTestSummaryArray[$key] = get_object_vars($value);
+            }
+        }
+        
+        if (isset($remoteTestSummaryArray['task_type_options'])) {
+            foreach ($remoteTestSummaryArray['task_type_options'] as $testType => $testTypeOptions) {
+                $remoteTestSummaryArray['task_type_options'][$testType] = get_object_vars($testTypeOptions);
+            }
+        }
+        
+        return $remoteTestSummaryArray;
+    } 
     
     
     /**
      *
-     * @param Test $test
+     * @param \stdClass|array $remoteTestSummary
+     * @return int 
+     */
+    private function getCompletionPercent($remoteTestSummary) {        
+        return ($remoteTestSummary instanceof \stdClass) ? $this->getCompletionPercentFromStdClass($remoteTestSummary) : $this->getCompletionPercentFromArray($remoteTestSummary);
+    } 
+    
+    
+    /**
+     * 
+     * @param \stdClass $remoteTestSummary
+     * @return int
+     */
+    private function getCompletionPercentFromStdClass($remoteTestSummary) {
+        if ($remoteTestSummary->task_count === 0) {
+            return 0;
+        }
+        
+        $finishedCount = 0;
+        foreach ($remoteTestSummary->task_count_by_state as $stateName => $taskCount) {
+            if (in_array($stateName, $this->taskFinishedStates)) {
+                $finishedCount += $taskCount;
+            }
+        }
+        
+        if ($finishedCount ==  $remoteTestSummary->task_count) {
+            return 100;
+        }   
+        
+        $requiredPrecision = floor(log10($remoteTestSummary->task_count)) - 1;
+        
+        if ($requiredPrecision == 0) {
+            return floor(($finishedCount / $remoteTestSummary->task_count) * 100);
+        }        
+        
+        return round(($finishedCount / $remoteTestSummary->task_count) * 100, $requiredPrecision);        
+    }
+    
+    
+    /**
+     * 
+     * @param array $remoteTestSummary
+     * @return int
+     */
+    private function getCompletionPercentFromArray($remoteTestSummary) {
+        if ($remoteTestSummary['task_count'] === 0) {
+            return 0;
+        }
+        
+        $finishedCount = 0;
+        foreach ($remoteTestSummary['task_count_by_state'] as $stateName => $taskCount) {
+            if (in_array($stateName, $this->taskFinishedStates)) {
+                $finishedCount += $taskCount;
+            }
+        }
+        
+        if ($finishedCount ==  $remoteTestSummary['task_count']) {
+            return 100;
+        }   
+        
+        $requiredPrecision = floor(log10($remoteTestSummary['task_count'])) - 1;
+        
+        if ($requiredPrecision == 0) {
+            return floor(($finishedCount / $remoteTestSummary['task_count']) * 100);
+        }        
+        
+        return round(($finishedCount / $remoteTestSummary['task_count']) * 100, $requiredPrecision);        
+    }
+    
+    
+    /**
+     *
+     * @param \stdClass $remoteTestSummary
      * @return array 
      */
-    private function getTaskCountByState(Test $test) {
+    private function getTaskCountByState(\stdClass $remoteTestSummary) {        
         $taskStates = array(
-            'in-progress',
-            'queued',
-            'completed'
+            'in-progress' => 'in_progress',
+            'queued' => 'queued',
+            'queued-for-assignment' => 'queued',
+            'completed' => 'completed',
+            'cancelled' => 'cancelled',
+            'awaiting-cancellation' => 'cancelled',
+            'failed' => 'failed',
+            'failed-no-retry-available' => 'failed',
+            'failed-retry-available' => 'failed',
+            'failed-retry-limit-reached' => 'failed',
+            'skipped' => 'skipped'
         );
         
         $taskCountByState = array();        
         
-        foreach ($taskStates as $taskState) {
-            $taskCountByState[$taskState] = $test->getTaskCountByState($taskState);
+        foreach ($taskStates as $taskState => $translatedState) {
+            if (!isset($taskCountByState[$translatedState])) {
+                $taskCountByState[$translatedState] = 0;
+            }
+            
+            if (isset($remoteTestSummary->task_count_by_state->$taskState)) {
+                $taskCountByState[$translatedState] += $remoteTestSummary->task_count_by_state->$taskState;
+            }            
         }
         
         return $taskCountByState;
-    }
-    
-    
-    /**
-     *
-     * @param Test $test
-     * @return array 
-     */
-    private function getTestUrls(Test $test) {
-        $urls = array();
-        $urlListResponse = $this->getTestService()->getUrls($test);
-        
-        if (!$urlListResponse) {
-            return $urls;
-        }
-        
-        $urlListContentObject = $urlListResponse->getContentObject();
-        foreach ($urlListContentObject as $urlObject) {
-            $urls[] = $urlObject->url;
-        }
-        
-        return $urls;           
-    }
-    
-    
-    public function resultsAction($website, $test_id) {                
-        if (!$this->getTestService()->has($website, $test_id)) {
-            return $this->redirect($this->generateUrl('app', array(), true));
-        }
-        
-        $test = $this->getTestService()->get($website, $test_id);        
-        
-        if (in_array($test->getState(), $this->progressStates)) {
-            return $this->redirect($this->getResultsUrl($website, $test_id));
-        }
-        
-        $viewData = array(
-            'this_url' => $this->getResultsUrl($website, $test_id),
-            'test_input_action_url' => $this->generateUrl('test_start', array(
-                'website' => $website,
-                'test_id' => $test_id
-            )),
-            'test' => $test,
-            'urls' => $this->getTestUrls($test),
-            'testId' => $test_id
-        );
-        
-        $this->setTemplate('SimplyTestableWebClientBundle:App:results.html.twig');
-        return $this->sendResponse($viewData);
-    }
-    
-    
-    
-    public function taskResultsAction($website, $test_id, $task_id) {
-        if (!$this->getTestService()->has($website, $test_id)) {
-            return $this->redirect($this->generateUrl('app', array(), true));
-        }
-
-        $test = $this->getTestService()->get($website, $test_id);
-        $task = $this->getTestService()->getTask($test, $task_id);
-        
-        if (!$this->getTaskOutputService()->has($test, $task)) {
-            return $this->sendNotFoundResponse();
-        }
-        
-        $taskOutput = $this->getTaskOutputService()->get($test, $task);   
-    
-        return new Response($this->getSerializer()->serialize($taskOutput, 'json'));        
-    }
-    
-    
-    
-    /**
-     * Get the progress page URL for a given site and test ID
-     * 
-     * @param string $website
-     * @param string $test_id
-     * @return string
-     */
-    private function getProgressUrl($website, $test_id) {
-        return $this->generateUrl(
-            'app_progress',
-            array(
-                'website' => $website,
-                'test_id' => $test_id
-            ),
-            true
-        );
-    }
-    
-    
-    /**
-     * Get the results page URL for a given site and test ID
-     * 
-     * @param string $website
-     * @param string $test_id
-     * @return string
-     */    
-    private function getResultsUrl($website, $test_id) {
-        return $this->generateUrl(
-            'app_results',
-            array(
-                'website' => $website,
-                'test_id' => $test_id
-            ),
-            true
-        );
-    }
-    
-    
-    /**
-     *
-     * @param string $flashKey
-     * @return boolean
-     */
-    private function hasFlash($flashKey) {
-        $flashMessages = $this->get('session')->getFlashBag()->get($flashKey);        
-        return is_array($flashMessages) && count($flashMessages) > 0;
-    }
-    
-    
-    /**
-     *
-     * @param type $flashKey
-     * @param type $messageIndex
-     * @return string|null 
-     */
-    private function getFlash($flashKey, $messageIndex = 0) {        
-        $flashMessages = $this->get('session')->getFlashBag()->get($flashKey);         
-        if (!isset($flashMessages[$messageIndex])) {
-            return false;
-        }
-        
-        return $flashMessages[$messageIndex];
-    }
-    
-    
-    /**
-     *
-     * @return \SimplyTestable\WebClientBundle\Services\TestService 
-     */
-    private function getTestService() {
-        return $this->container->get('simplytestable.services.testservice');
-    }  
-    
-    
-    /**
-     *
-     * @return \SimplyTestable\WebClientBundle\Services\TaskOutputService 
-     */
-    private function getTaskOutputService() {
-        return $this->container->get('simplytestable.services.taskoutputservice');
-    }   
-    
-    
-    /**
-     *
-     * @return \JMS\SerializerBundle\Serializer\Serializer
-     */
-    protected function getSerializer() {
-        return $this->container->get('serializer');
     }    
+    
+    public function prepareResultsAction($website, $test_id)
+    {        
+        $this->getTestService()->setUser($this->getUser());
+        
+        if ($this->isUsingOldIE()) {
+            return $this->forward('SimplyTestableWebClientBundle:App:outdatedBrowser');
+        }
+        
+        $testRetrievalOutcome = $this->getTestRetrievalOutcome($website, $test_id);
+        if ($testRetrievalOutcome->hasResponse()) {
+            return $testRetrievalOutcome->getResponse();
+        }
+        
+        $test = $testRetrievalOutcome->getTest();
+
+        if (!in_array($test->getState(), $this->testFinishedStates)) {
+            return $this->redirect($this->getProgressUrl($website, $test_id));
+        }
+        
+        if (!$test->hasTaskIds()) {
+            $this->getTaskService()->getRemoteTaskIds($test);
+        }
+        
+        $remoteTestSummary = $this->getTestService()->getRemoteTestSummary();
+        
+        $localTaskCount = $test->getTaskCount();
+        $remoteTaskCount = $remoteTestSummary->task_count;        
+        $completionPercent = round(($localTaskCount / $remoteTaskCount) * 100);
+        $remainingTasksToRetrieveCount = $remoteTaskCount - $localTaskCount;
+        
+        $this->setTemplate('SimplyTestableWebClientBundle:App:results-preparing.html.twig');
+        return $this->sendResponse(array(            
+            'public_site' => $this->container->getParameter('public_site'),
+            'this_url' => $this->getPreparingResultsUrl($website, $test_id),
+            'user' => $this->getUser(),
+            'is_logged_in' => !$this->getUserService()->isPublicUser($this->getUser()),
+            'website' => idn_to_utf8($website),
+            'test' => $test,
+            'completion_percent' => $completionPercent,
+            'remaining_tasks_to_retrieve_count' => $remainingTasksToRetrieveCount,
+            'local_task_count' => $localTaskCount,
+            'remote_task_count' => $remoteTaskCount
+        ));     
+    }
+    
+    
+    /**
+     *
+     * @return \SimplyTestable\WebClientBundle\Services\TaskService 
+     */
+    private function getTaskService() {
+        return $this->container->get('simplytestable.services.taskservice');
+    }    
+    
+    
+    /**
+     *
+     * @return \SimplyTestable\WebClientBundle\Services\TestQueueService
+     */
+    private function getTestQueueService() {
+        if (is_null($this->testQueueService)) {
+            $this->testQueueService = $this->container->get('simplytestable.services.testqueueservice');
+            $this->testQueueService->setApplicationRootDirectory($this->container->get('kernel')->getRootDir());
+                    
+        }
+        
+        return $this->testQueueService;
+
+    }
+    
+    
+    public function outdatedBrowserAction() {
+        $publicSiteParameters = $this->container->getParameter('public_site');        
+        return $this->redirect($publicSiteParameters['urls']['home']);
+    }
+
 }

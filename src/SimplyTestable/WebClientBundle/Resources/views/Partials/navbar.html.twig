@@ -1,14 +1,46 @@
-<div class="navbar navbar-inverse navbar-fixed-top">
+<div class="navbar navbar-inverse navbar-fixed-top">    
     <div class="navbar-inner">
+
         <div class="container">
-            <!--
-            <a class="brand" href="#">Title</a>
-            <ul class="nav">
-                <li class="active"><a href="#">Home</a></li>
-                <li><a href="#">Link</a></li>
-                <li><a href="#">Link</a></li>
-            </ul> 
-            -->
+            <div class="row-fluid">
+                <div class="span12">
+                    <a class="brand" href="{{ public_site['urls']['home'] }}">
+                        SimplyTestable
+                    </a>
+                    {% if is_logged_in %}
+                    <div class="pull-right">                        
+                        <form class="form-inline sign-out-form" method="post" action="{{ path('sign_out_submit') }}">
+                            <p class="navbar-text">                                
+                                <a href="{{ path('user_account_index') }}" class="navbar-link">
+                                    <i class="icon icon-user"></i>
+                                    {{ user.username }}
+                                </a>
+                                <button class="btn btn-small btn-primary" type="submit">
+                                    Sign out
+                                    <i class="icon icon-caret-right"></i>
+                                </button>
+                            </p>                        
+                        </form>                              
+                    </div> 
+                    <ul class="nav pull-right">
+                        <li class=""><i class="icon icon-play-circle"></i> <a href="{{ path('app') }}">Start a new website test</a></li>
+                        <li class=""><i class="icon icon-cog"></i> <a href="{{ path('app') }}#recent-site-tests">Recent tests</a></li>
+                    </ul>                        
+
+                    {% else %}                        
+                    <p class="navbar-text pull-right">  
+                        <a href="{{ path('sign_in') }}" class="btn "><i class="icon icon-caret-right"></i> Sign in</a>                        
+                        <a href="{{ path('sign_up') }}" class="btn btn-primary"><i class="icon icon-user"></i> Create account</a>                                                
+                    </p>  
+                    <ul class="nav pull-right">
+                        <li class=""><i class="icon icon-play-circle"></i> <a href="{{ path('app') }}">Start a new website test</a></li>
+                    </ul>                    
+                    {% endif %}                       
+                    
+                     
+                </div>
+            </div>
         </div>
+
     </div>
 </div>

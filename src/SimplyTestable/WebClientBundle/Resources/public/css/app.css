@@ -1,5 +1,30 @@
+.navbar .brand {
+    background: url('/bundles/simplytestablewebclient/images/st30.png') transparent no-repeat 5px 4px;
+    color: #08C;
+    padding-left: 40px;
+}
+
+.navbar-inverse .brand:hover {
+    color:#0ae;
+}
+
+.navbar .nav > li {
+    padding-top:2px;
+    position:relative;
+}
+
+.navbar .nav > li i.icon {
+    position: absolute;
+    top: 12px;
+    left: -4px;    
+}
+
+.navbar .nav > li:hover i.icon {
+    color:#eee;
+}
+
 body {
-    margin-top:60px;
+    margin-top:80px;
 }
 
 .hero-unit {
@@ -21,9 +46,9 @@ body {
     left: -50px;    
 }
 
-#outer {
-    width:70%;
-    margin:0 15%;
+.outer {
+    width:80%;
+    margin:0 10%;
 }
 
 #main section {
@@ -65,10 +90,6 @@ section .info i {
     opacity:0.4;
 }
 
-/*.app-results #main .leader h1 i {
-    font-size:24px;
-}*/
-
 section.top {
     height:110px;
 }
@@ -80,13 +101,7 @@ section.top {
 }
 
 #main #input .fields input {
-    font-size: 15px;
-    padding: 9px 9px 8px 9px;
-    width:65%;
-}
-
-#main #input .fields button {
-    width:30%;
+    width:60%;
 }
 
 #main #input .fields button i {
@@ -145,82 +160,678 @@ section.top {
     margin-bottom:0;
 }
 
-#progress h2 {
+section h2 {
     font-weight: normal;
 }
 
-#progress #url-list ul {
+#test-list #task-list-container .tasks {
     list-style:none;
-}
-
-#progress #url-list ul.urls {
     margin: 20px 0 0 0;
 }
 
-#progress #url-list ul li {
+#test-list #task-list-container .task {
     list-style-type: none;
-    margin:0;
+    margin:0 0 0 0;
     padding:0;
 }
 
-#progress #url-list ul.urls {
-    clear:both;
+#test-list #task-list-container .task .url {
+    display:block;
 }
 
-#progress #url-list ul.urls li.url {
-    margin:8px 0;
+#test-list #task-list-container .task .meta {
+    margin: 0 0 0 20px;
 }
 
-#progress #url-list ul.tasks li.queued i {
+#test-list #task-list-container .task .meta .output-indicator {
+/*    margin-left:8px;*/
+}
+
+#test-list #task-list-container .tasks .queued i,
+#test-list #task-list-container .tasks .queued-for-assignment i {
     color:#F89406;
 }
 
-#progress #url-list ul.tasks li.in-progress i {
+#test-list #task-list-container ul.tasks .in-progress i {
     color:#08c;
 }
 
-#progress #url-list ul.tasks li.completed i {
+#test-list #task-list-container ul.tasks .failed-no-retry-available i,
+#test-list #task-list-container ul.tasks .failed-retry-available i,
+#test-list #task-list-container ul.tasks .failed-retry-limit-reached i,
+#test-list #task-list-container ul.tasks .failed i {
+    color:#953B39;
+}
+
+#test-list #task-list-container ul.tasks .completed i {
     color:#51A351;
 }
 
-#progress #url-list ul.tasks li.task .type {
-    opacity:0.6;
+#test-list #task-list-container ul.tasks .skipped i,
+#test-list #task-list-container ul.tasks .cancelled i {
+    color:#999;
 }
 
-#progress .test-states {
+#test-list #task-list-container ul.tasks i.icon-caret-right {
+    color:#fff;
+}
+
+#test-list #task-list-container ul.tasks .task .type {
+    opacity:0.6;
+    display:inline-block;
+    width:110px;
+}
+
+#test-list .tab-content .tab-pane {
+    padding-top:20px;
+}
+
+#test-list #task-list-container #tab-list {
+    margin-bottom:0;
+}
+
+#test-list #task-list-container #tab-list .tab-hidden {
+    display:none;
+}
+
+#test-list #task-list-container #tab-list .tab-visible {
+    display:block;
+}
+
+#test-list .tab-list-control {
+    color: #08c;
+    display: block; 
+    font-size: 20px;  
+    padding:8px 12px;
+}
+
+#test-list .tab-list-control:hover {
+    color: #005580;
+    cursor:pointer;
+    background-color:#e0e0e0;
+}
+
+#test-list #task-list-container .tab-content .tab-pane .tasks {
+    margin-top:0;
+}
+
+#test-list .tab-content .pane-empty {
+    height:400px;
+}
+
+#test-summary .test-states {
     width:100%;
 }
 
-#progress .test-states th {
+#test-summary .test-states th {
     text-align: right;
     width:10%;
 }
 
-#progress .test-states td.bar {
+#test-summary .test-states td.bar {
     width:90%;
 }
 
-
-#progress .test-states .bar span {
-    width:100%;    
-    display: inline-block;
-    margin-left: 6px;
+#test-summary .test-states .label {
+    display:inline-block;  
+    padding: 3px 5px;
 }
 
+#test-summary .test-states th .label {
+    padding: 2px 5px;
+}
 
-#progress .test-states .queued .bar span {
+#test-summary .test-states .bar span {
+    width:100%;    
+    margin-left: 6px;
+    margin-top:1px;
+    padding-top:1px;
+    display:block;
+}
+
+#test-summary .test-states .queued .bar span {
     background-color:#F89406;
 }
 
-#progress .test-states .in_progress .bar span {
+#test-summary .test-states .in_progress .bar span {
     background-color:#3A87AD;
 }
 
-#progress .test-states .completed .bar span {
+#test-summary .test-states .completed .bar span {
     background-color:#468847;
 }
 
-#progress #url-list h2 i {
+#test-list #task-list-container h2 i {
     font-size: 38px;
     line-height: 48px;    
+}
+
+#test-list span.info i {
+    font-size: 38px;
+    line-height: 48px;    
+}
+
+body.app-task-results #main h1 i,
+body.app-results #main h1 i {
+    font-size: 38px;
+    line-height: 48px;        
+}
+
+#test-list #task-list-container .taskSet {
+    margin-bottom:10px;
+}
+
+#test-list #task-list-container li.task a.label i {
+    color:#fff;
+}
+
+body.app-task-results #task-summary th {
+    text-align: right;
+    padding-right: 10px;
+}
+
+body.app-task-results .errors {
+    list-style: none;
+    margin-left: 0;
+}
+
+body.app-task-results .errors li {
+    list-style-type: none;
+    margin-bottom:16px;
+/*    position:relative;*/
+/*    height: 40px;*/
+}
+
+body.app-task-results .errors li pre {
+    background-color: transparent;
+    border: none;    
+    margin-left:0;
+    padding-left:0;
+    opacity: 0.8;
+}
+
+/*body.app-task-results .errors span,
+body.app-task-results .errors div.message {
+    position:absolute;
+}
+
+body.app-task-results .errors .meta {
+    left:0px;
+    font-style: italic;
+}
+
+body.app-task-results .errors .message {
+    left:145px;
+    font-weight: bold;
+}*/
+
+body.app-task-results .errors div.message {
+    left:145px;
+    font-weight: normal;
+}
+
+#main .notification-panel {
+    
+}
+
+#main .notification-panel .intro {
+    margin-bottom: 30px;
+    border-bottom: 1px solid #DDD;
+    padding-bottom:30px;
+    margin-bottom:30px;
+}
+
+#main .notification-panel .intro p {
+    font-size: 18px;
+    line-height: 26px;
+}
+
+body.app-task-results section .notification h3,
+#main .notification-panel h3 {
+    font-weight: normal;
+}
+
+body.app-task-results section .notification p code {
+    font-size: 22px;
+    line-height: 22px;
+    padding: 6px 6px 2px 6px;    
+}
+
+body.app-task-results section .notification p {
+    font-size: 22px;
+    line-height: 32px;
+    margin-bottom: 14px;
+}
+
+body.app-task-results section .notification blockquote {
+    border-left-color: #ccc;
+}
+
+body.single-page-dialog .input-append {
+    width:100%;
+}
+
+body.single-page-dialog .intro p {
+    font-size:15px;
+}
+
+body.single-page-dialog #main section {
+    margin-top:80px;  
+}
+
+body.single-page-dialog section .content {
+    margin-left:30px;
+}
+
+body.single-page-dialog #main form {
+    margin:20px 0;
+}
+
+body.single-page-dialog #main input {
+    width:94%;
+}
+
+body.single-page-dialog #main .input-append input {
+    width:70%;
+}
+
+body.single-page-dialog #main button.submit {
+    margin-top:20px;
+}
+
+
+form .larger input {
+    font-size: 15px;
+    padding: 12px 9px 12px 9px;      
+}
+
+body.app-progress form .larger input {
+    font-size: 15px;
+    padding: 14px 9px 13px 9px;      
+}
+
+body.app #input .btn-primary,
+body.app-results #input .btn-primary {    
+    width:20%;
+}
+
+body.app-progress #input .btn-primary {
+    width:30%;
+}
+
+form .larger button {
+    padding-top: 12px;    
+    padding-bottom:13px;
+}
+
+form .larger .control-label,
+form .larger label {
+    font-size: 15px;    
+    padding-top:13px;
+}
+
+div.logo {
+    position: absolute;
+    background: url('/bundles/simplytestablewebclient/images/logo100-bold-bordered.png') transparent no-repeat top left;
+    width: 100px;
+    height: 100px;
+    left: -50px;
+}
+
+div.input-secondary {
+    margin-top:30px;
+    border-top: 1px solid #ddd;
+    padding-top:20px;
+}
+
+.navbar .user-link,
+.navbar form.sign-out-form .icon-user {
+    padding-left:10px;
+}
+
+.navbar  form.sign-out-form {
+    margin:1px 0 0 0;
+    padding:0;
+}
+
+.navbar form.sign-out-form button {
+    margin:0 0 0 6px;
+}
+
+#recent-site-tests h3 {        
+    margin: 0 0 0 -30px;
+    padding: 10px 0 10px 30px;       
+}
+
+#recent-site-tests {
+  
+}
+
+
+#recent-site-tests .site {
+    position:relative;
+    padding-right:3%;  
+}
+
+#recent-site-tests .site .wrapper {
+    padding: 20px 0;    
+}
+
+#recent-site-tests .site .icon {
+    font-size:20px;
+}
+
+#recent-site-tests .site .state-icon {
+    margin-right:4px;
+}
+
+#recent-site-tests .site .action-icon {
+    margin-left:4px;
+}
+
+#recent-site-tests .badge {
+    padding: 4px 4px 4px 8px;
+    display:inline-block;
+}
+
+#recent-site-tests .site .url {
+    text-decoration: none;
+    font-size:16px;
+}
+
+#recent-site-tests .site .results {
+    position: absolute;
+    right: 10%;   
+    top:20px;
+}
+
+#recent-site-tests .site .results a {
+    text-decoration: none;
+}
+
+#recent-site-tests .site .total .test-count {
+    color: #666;
+    font-size: 40px;
+    line-height: 40px;
+    display: block;    
+}
+
+#recent-site-tests .site .total .subtext {
+    color:#aaa;
+}
+
+#recent-site-tests .site .total .percent {
+    font-size:14px;
+    line-height:14px;
+    font-weight: normal;
+}
+
+#recent-site-tests .site .detail {
+    font-size: 12px;
+    line-height: 15px;
+    text-align: right;
+    padding-right: 3px;
+    margin-top: 5px;    
+}
+
+#recent-site-tests .site .detail .figure {
+    display:inline-block;
+    width:30px;
+    text-align: right;
+}
+
+body.app-task-results #task-summary h3 {
+    font-size: 16px;
+    font-weight: normal;    
+    opacity:0.9;
+}
+
+
+
+#test-options {
+    margin-top:30px;
+}
+
+#test-options p.info {
+    font-weight: bold;
+}
+
+#test-options .test-options-set {
+    border-radius: 5px;
+    padding: 10px;
+}
+
+#test-options .test-options-set:hover {
+    background-color:#e7e7e7;
+}
+
+#test-options .test-type {
+    font-weight: bold;
+    opacity: 0.9;
+}
+
+
+
+#input form {
+    margin-bottom: 0;
+}
+
+
+body.app-task-results .errors .meta,
+body.app-task-results .errors .content {
+    float:left;
+}
+
+body.app-task-results .errors .meta {
+    width:20%
+}
+
+body.app-task-results .errors .content {
+    margin-left:10px;
+    width:78%;
+}
+
+body.app-task-results .errors .content .message,
+body.app-task-results .errors .content .fragment {
+    display:block;
+}
+
+body.app-results #no-errors {
+    position: relative;
+}
+
+/*body.app-results #no-errors #trophy .icon-certificate {
+    font-size:380px;
+    line-height: 400px;
+    color: #faa732;
+}*/
+
+body.app-results #no-errors #trophy .icon-ok {
+    font-size:200px;
+    line-height: 240px;
+    color: #51A351;
+    margin-left:30px;
+/*    position:absolute;
+    left:100px;
+    top:100px;*/
+    
+}
+
+body.app-results #no-errors p {
+position: absolute;
+left: 260px;
+font-size: 66px;
+line-height: 76px;
+opacity: 0.8;
+top: 40px;    
+}
+
+#test-options .ignore-common-cdn-domains ul {
+margin: 0;
+padding: 0;    
+}
+
+#test-options .ignore-common-cdn-domains ul li {
+    list-style-type: none;
+    opacity:0.8;
+}
+
+.css-domains-to-ignore textarea {
+    width:60%;
+}
+
+#test-options .test-options-advanced {
+    margin-left: 18px;
+}
+
+body.app-progress #test-options .test-options-advanced {
+    margin-left:0;
+}
+
+
+#test-options  .validator-option-set p {
+    font-weight: bold;
+    opacity: 0.8;
+    margin: 6px 0;
+}
+
+body.app-task-results .outcome {
+    white-space: nowrap;
+}
+
+body.app-task-results .section-marker {
+    padding-top:60px;
+    display:block;
+    margin-top:-60px;
+}
+
+body.app-task-results .outcome a {
+    color: #fff;
+}
+
+body.app-task-results .outcome .label {
+    margin-right:4px;
+}
+
+body.app-results #test-list #task-list-container .label-success i.icon-ok {
+    color:#fff;
+    opacity:0.8;
+}
+
+body.app-progress .test-options-advanced .title {
+    margin-top: 8px;
+}
+
+body.app-progress .test-options-advanced ul {
+    margin-top: 8px;
+}
+
+body.app-progress .test-options-advanced ul li {
+   margin-bottom: 4px;
+}
+
+body.app-results-preparing h1 {
+    margin-bottom: 40px;
+}
+
+body.app-results-preparing .summary {
+    margin-top: 30px;    
+}
+
+body.app-results-preparing #completion-percent {
+
+}
+
+@media (min-width: 1200px) {
+    body.single-page-dialog #main input {
+        width:96%;
+    }    
+    
+    body.single-page-dialog #main .input-append input {
+        width:76%;
+    }
+    
+    body.app-task-results .errors .meta {
+        width:14%
+    }
+
+    body.app-task-results .errors .content {        
+        width:82%;
+    }    
+}
+
+body.sign-in #stay-signed-in-container {
+    margin-left:100px;
+    margin-top:-30px;
+}
+
+#stay-signed-in-container span {
+    opacity: 0.8;
+}
+
+body.single-page-dialog #stay-signed-in-container input {
+    width:auto;
+}
+
+body.app-progress #completion-time-remaining {
+    padding:0;
+    margin: -10px 0 -10px 0;
+    opacity: 0.6;
+}
+
+body.account h1,
+body.account h2,
+body.account h3,
+body.account h4 {
+    font-weight: normal;
+}
+
+body.account h1 {
+    font-size:32px;
+    line-height: 44px;
+}
+
+body.account h2 {
+    font-size:26px;
+    line-height: 34px;
+    opacity:0.7;
+}
+
+body.account h3 {
+    font-size:18px;
+    line-height: 24px;
+    opacity:0.7;
+}
+
+body.account .account-details label {
+    width:140px;
+}
+
+body.account .plan table {
+    
+}
+
+body.account .plan th {
+    padding-left: 0;
+    font-weight: normal;
+}
+
+body.account .plan-section {
+    margin-bottom:30px;
+}
+
+body.account .confirm-email-change form {
+    margin-left: -16px;
+}
+
+body.account .confirm-email-change form #token {
+    width:100%;
+}
+
+.navbar-link {
+    text-decoration:none;    
+}
+
+.navbar-link:hover {
+    text-decoration:none;
 }

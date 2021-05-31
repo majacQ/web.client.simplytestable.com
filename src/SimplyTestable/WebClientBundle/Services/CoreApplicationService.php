@@ -1,8 +1,17 @@
 <?php
 namespace SimplyTestable\WebClientBundle\Services;
 
+use SimplyTestable\WebClientBundle\Model\User;
+
 
 abstract class CoreApplicationService {    
+    
+    /**
+     *
+     * @var \SimplyTestable\WebClientBundle\Model\User;
+     */
+    private static $user;
+    
     
     /**
      *
@@ -23,12 +32,43 @@ abstract class CoreApplicationService {
         \SimplyTestable\WebClientBundle\Services\WebResourceService $webResourceService
     ) {
         $this->parameters = $parameters;
-        $this->webResourceService = $webResourceService;        
-    }   
+        $this->webResourceService = $webResourceService;
+    } 
     
     
-    protected function getUrl($name, $parameters) {
-        $url =  $this->parameters['urls']['base'] . $this->parameters['urls'][$name];
+    /**
+     * 
+     * @param \SimplyTestable\WebClientBundle\Model\User $user
+     */
+    public function setUser(User $user) {
+        self::$user = $user;
+    }
+    
+    
+    /**
+     * 
+     * @return \SimplyTestable\WebClientBundle\Model\User
+     */
+    public function getUser() {
+        return self::$user;
+    }
+    
+    
+    /**
+     * 
+     * @return boolean
+     */
+    public function hasUser() {
+        return !is_null($this->getUser());
+    }
+    
+    
+    protected function getUrl($name = null, $parameters = null) {
+        $url = $this->parameters['urls']['base'];
+        
+        if (!is_null($name)) {
+            $url .= $this->parameters['urls'][$name];
+        }
         
         if (is_array($parameters)) {
             foreach ($parameters as $parameterName => $parameterValue) {
@@ -40,13 +80,12 @@ abstract class CoreApplicationService {
     }
     
     
-    protected function getAuthorisedHttpRequest($url = '', $request_method = HTTP_METH_GET, $options = array()) {
-        $httpRequest = new \HttpRequest($url, $request_method, $options);
-        $httpRequest->addHeaders(array(
-            'Authorization' => 'Basic ' . base64_encode('public:public')
+    protected function addAuthorisationToRequest(\Guzzle\Http\Message\Request $request) {
+        $request->addHeaders(array(
+            'Authorization' => 'Basic ' . base64_encode($this->getUser()->getUsername().':'.$this->getUser()->getPassword())
         ));
         
-        return $httpRequest;
+        return $request;                
     }
     
 }
