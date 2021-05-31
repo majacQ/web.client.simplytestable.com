@@ -6,6 +6,9 @@ use SimplyTestable\WebClientBundle\Entity\Test\Test;
 use SimplyTestable\WebClientBundle\Entity\Task\Task;
 use SimplyTestable\WebClientBundle\Entity\TimePeriod;
 use Symfony\Component\HttpKernel\Log\LoggerInterface as Logger;
+use SimplyTestable\WebClientBundle\Model\User;
+use SimplyTestable\WebClientBundle\Exception\UserServiceException;
+use SimplyTestable\WebClientBundle\Model\TestOptions;
 
 use webignition\NormalisedUrl\NormalisedUrl;
 
@@ -77,11 +80,21 @@ class TestService extends CoreApplicationService {
     }     
     
     
-    public function start($canonicalUrl) {
+    public function start($canonicalUrl, TestOptions $testOptions) {
         $httpRequest = $this->getAuthorisedHttpRequest(
             $this->getUrl('test_start', array(
             'canonical-url' => $canonicalUrl
-        )));        
+        ))); 
+        
+        $queryData = array();
+        
+        if ($testOptions->hasTestTypes()) {
+            $queryData['test-types'] = $testOptions->getTestTypes();
+        }
+        
+        if (count($queryData)) {
+            $httpRequest->setQueryData($queryData);
+        }
         
         /* @var $response \webignition\WebResource\JsonDocument\JsonDocument */
         try {
@@ -122,12 +135,12 @@ class TestService extends CoreApplicationService {
      * @param int $testId
      * @return boolean
      */
-    public function has($canonicalUrl, $testId) {        
+    public function has($canonicalUrl, $testId, User $user) {        
         if ($this->hasEntity($testId)) {
             return true;
         }
         
-        return $this->get($canonicalUrl, $testId) instanceof Test;
+        return $this->get($canonicalUrl, $testId, $user) instanceof Test;
     }
     
     
@@ -137,7 +150,7 @@ class TestService extends CoreApplicationService {
      * @param int $testId
      * @return Test
      */
-    public function get($canonicalUrl, $testId) {        
+    public function get($canonicalUrl, $testId, User $user) {                        
         if ($this->hasEntity($testId)) {           
             /* @var $test Test */
             $this->currentTest = $this->fetchEntity($testId);
@@ -153,6 +166,10 @@ class TestService extends CoreApplicationService {
             if (!$this->create()) {
                 return false;
             }
+        }        
+        
+        if ($this->currentTest->getUser() != $user->getUsername() && $this->currentTest->getUser() != 'public') {
+            throw new UserServiceException(403);
         }
         
         $this->entityManager->persist($this->currentTest);

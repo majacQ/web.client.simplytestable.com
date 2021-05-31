@@ -6,6 +6,7 @@ use SimplyTestable\WebClientBundle\Entity\Test\Test;
 use SimplyTestable\WebClientBundle\Entity\Task\Task;
 use Symfony\Bundle\FrameworkBundle\Controller\Controller;
 use Symfony\Component\HttpFoundation\Response;
+use SimplyTestable\WebClientBundle\Exception\UserServiceException;
 
 class AppController extends BaseViewController
 {
@@ -48,17 +49,18 @@ class AppController extends BaseViewController
         }        
         
         $templateName = 'SimplyTestableWebClientBundle:App:index.html.twig';
-        $templateLastModifiedDate = $this->getTemplateLastModifiedDate($templateName);        
+        $templateLastModifiedDate = $this->getTemplateLastModifiedDate($templateName);
         
-        $hasTestStartError = $this->hasFlash('test_start_error');
-        $hasTestStartBlockedWebsiteError = $this->hasFlash('test_start_error_blocked_website');
+        $htmlValidationSelected = $this->getPersistentValue('html-validation', '1');
+        $cssValidationSelected = $this->getPersistentValue('css-validation', '1');
+        
+        $testStartError = $this->getFlash('test_start_error');        
         
         $recentTests = $this->getRecentTests(6);
         $recentTestsHash = md5(json_encode($recentTests));        
         
         $cacheValidatorIdentifier = $this->getCacheValidatorIdentifier(array(
-            'test_start_error' => ($hasTestStartError) ? 'true' : 'false',
-            'test_start_error_blocked_website' => ($hasTestStartBlockedWebsiteError) ? 'true' : 'false',
+            'test_start_error' => $testStartError,
             'recent_tests_hash' => $recentTestsHash
         ));
         
@@ -76,12 +78,14 @@ class AppController extends BaseViewController
         
         return $this->render($templateName, array(            
             'test_input_action_url' => $this->generateUrl('test_start'),
-            'test_start_error' => $hasTestStartError,
-            'test_start_error_blocked_website' => $hasTestStartBlockedWebsiteError,
+            'test_start_error' => $testStartError,
             'public_site' => $this->container->getParameter('public_site'),
             'user' => $this->getUser(),
             'is_logged_in' => !$this->getUserService()->isPublicUser($this->getUser()),
-            'recent_tests' => $recentTests
+            'recent_tests' => $recentTests,
+            'website' => $this->getPersistentValue('website'),
+            'html_validation_selected' => $htmlValidationSelected,
+            'css_validation_selected' => $cssValidationSelected,
         ));         
 
         return $this->getCachableResponse($this->render($templateName, array(            
@@ -199,16 +203,47 @@ class AppController extends BaseViewController
         
         if ($this->isUsingOldIE()) {
             return $this->forward('SimplyTestableWebClientBundle:App:outdatedBrowser');
-        } 
-
-        if (!$this->getTestService()->has($website, $test_id)) {
+        }
+        
+        if (!$this->getTestService()->has($website, $test_id, $this->getUser())) {
             return $this->redirect($this->generateUrl('app_test_redirector', array(
                 'website' => $website,
                 'test_id' => $test_id
             ), true));
         } 
         
-        $test = $this->getTestService()->get($website, $test_id);
+        try {
+            $test = $this->getTestService()->get($website, $test_id, $this->getUser());            
+        } catch (UserServiceException $e) {
+            if (!$this->isLoggedIn()) {                
+                $redirectParameters = json_encode(array(
+                    'route' => 'app_progress',
+                    'parameters' => array(
+                    'website' => $website,
+                    'test_id' => $test_id                        
+                    )
+                ));
+                
+                $this->get('session')->setFlash('user_signin_error', 'test-not-logged-in');
+                return $this->redirect($this->generateUrl('sign_in', array(
+                    'redirect' => base64_encode($redirectParameters)
+                ), true));                
+            }
+            
+            $this->setTemplate('SimplyTestableWebClientBundle:App:test-not-authorised.html.twig');
+            return $this->sendResponse(array(
+                'this_url' => $this->getProgressUrl($website, $test_id),
+                'test_input_action_url' => $this->generateUrl('test_cancel', array(
+                    'website' => $website,
+                    'test_id' => $test_id
+                )),
+                'website' => $website,
+                'test_id' => $test_id,
+                'public_site' => $this->container->getParameter('public_site'),
+                'user' => $this->getUser(),
+                'is_logged_in' => !$this->getUserService()->isPublicUser($this->getUser()),                
+            ));            
+        }
         
         if (in_array($test->getState(), $this->testFinishedStates)) {
             return $this->redirect($this->getResultsUrl($website, $test_id));
@@ -222,6 +257,11 @@ class AppController extends BaseViewController
         }        
         
         $remoteTestSummary = $this->getTestService()->getRemoteTestSummary();
+        
+        $taskTypes = array();
+        foreach ($remoteTestSummary->task_types as $taskTypeObject) {
+            $taskTypes[] = $taskTypeObject->name;
+        }
         
         $viewData = array(
             'this_url' => $this->getProgressUrl($website, $test_id),
@@ -237,7 +277,8 @@ class AppController extends BaseViewController
             'completion_percent' => $this->getCompletionPercent($remoteTestSummary),
             'public_site' => $this->container->getParameter('public_site'),
             'user' => $this->getUser(),
-            'is_logged_in' => !$this->getUserService()->isPublicUser($this->getUser()),            
+            'is_logged_in' => !$this->getUserService()->isPublicUser($this->getUser()),
+            'task_types' => $taskTypes
         );          
         
         $this->setTemplate('SimplyTestableWebClientBundle:App:progress.html.twig');
@@ -364,14 +405,14 @@ class AppController extends BaseViewController
         return $taskCountByState;
     }    
     
-    public function resultsAction($website, $test_id) {                
+    public function resultsAction($website, $test_id) {                        
         $this->getTestService()->setUser($this->getUser());
         
         if ($this->isUsingOldIE()) {
             return $this->forward('SimplyTestableWebClientBundle:App:outdatedBrowser');
         }        
         
-        if (!$this->getTestService()->has($website, $test_id)) {
+        if (!$this->getTestService()->has($website, $test_id, $this->getUser())) {
             return $this->redirect($this->generateUrl('app_test_redirector', array(
                 'website' => $website,
                 'test_id' => $test_id
@@ -390,9 +431,40 @@ class AppController extends BaseViewController
         $response = $this->getCachableResponse(new Response(), $cacheValidatorHeaders);
         if ($response->isNotModified($this->getRequest())) {
             return $response;
-        }        
+        }
         
-        $test = $this->getTestService()->get($website, $test_id);
+        try {
+            $test = $this->getTestService()->get($website, $test_id, $this->getUser());
+        } catch (UserServiceException $e) {
+            if (!$this->isLoggedIn()) {                
+                $redirectParameters = json_encode(array(
+                    'route' => 'app_progress',
+                    'parameters' => array(
+                    'website' => $website,
+                    'test_id' => $test_id                        
+                    )
+                ));
+                
+                $this->get('session')->setFlash('user_signin_error', 'test-not-logged-in');
+                return $this->redirect($this->generateUrl('sign_in', array(
+                    'redirect' => base64_encode($redirectParameters)
+                ), true));                
+            }
+            
+            $this->setTemplate('SimplyTestableWebClientBundle:App:test-not-authorised.html.twig');
+            return $this->sendResponse(array(
+                'this_url' => $this->getProgressUrl($website, $test_id),
+                'test_input_action_url' => $this->generateUrl('test_cancel', array(
+                    'website' => $website,
+                    'test_id' => $test_id
+                )),
+                'website' => $website,
+                'test_id' => $test_id,
+                'public_site' => $this->container->getParameter('public_site'),
+                'user' => $this->getUser(),
+                'is_logged_in' => !$this->getUserService()->isPublicUser($this->getUser()),                
+            ));            
+        }
         
         if ($test->getWebsite() != $website) {
             return $this->redirect($this->generateUrl('app_test_redirector', array(
@@ -407,6 +479,19 @@ class AppController extends BaseViewController
         
         $remoteTestSummary = $this->getTestService()->getRemoteTestSummary();        
         
+        $taskTypes = array();
+        foreach ($remoteTestSummary->task_types as $taskTypeObject) {
+            $taskTypes[] = $taskTypeObject->name;
+        }        
+        
+        if ($remoteTestSummary->task_count > $test->getTaskCount()) {
+            $tasks = $this->getTaskService()->getCollection($test);
+            
+            foreach ($tasks as $task) {
+                $test->addTask($task);
+            }         
+        }
+        
         $viewData = array(
             'this_url' => $this->getResultsUrl($website, $test_id),
             'test_input_action_url' => $this->generateUrl('test_start'),
@@ -416,7 +501,8 @@ class AppController extends BaseViewController
             'public_site' => $this->container->getParameter('public_site'),
             'filter' => $taskListFilter,
             'user' => $this->getUser(),
-            'is_logged_in' => !$this->getUserService()->isPublicUser($this->getUser()),            
+            'is_logged_in' => !$this->getUserService()->isPublicUser($this->getUser()),    
+            'task_types' => $taskTypes
         );
                        
         //$taskCollectionLength = ($taskListFilter == 'all') ? $remoteTestSummary->task_count : $this->getFilteredTaskCollectionLength($test, $this->getRequestValue('filter', 'all'));
@@ -424,16 +510,7 @@ class AppController extends BaseViewController
         //if ($taskCollectionLength > 0 && $taskCollectionLength <= self::RESULTS_PAGE_LENGTH) {
             $remoteTaskIds = ($taskListFilter == 'all') ? null : $this->getFilteredTaskCollectionRemoteIds($test, $this->getRequestValue('filter', $taskListFilter));           
             $tasks = $this->getTaskService()->getCollection($test, $remoteTaskIds); 
-            
-            foreach ($tasks as $taskIndex => $task) {                
-                if (($task->getState() == 'completed' || $task->getState() == 'failed') && $task->hasOutput()) {           
-                    $parser = $this->getTaskOutputResultParserService()->getParser($task->getOutput());
-                    $parser->setOutput($task->getOutput());
-
-                    $task->getOutput()->setResult($parser->getResult());
-                }
-            } 
-            
+       
             $viewData['tasks'] = $this->getTasksGroupedByUrl($tasks);
         //} else {
         //    $viewData['tasks'] = array();
