@@ -54,8 +54,8 @@
                             
                             <tr>                
                                 <th>Outcome</th>
-                                <td class="outcome">                                
-                                {% if task.state == 'failed' or task.state == 'failed-no-retry-available' or task.state == 'failed-retry-limit-reached' %}
+                                <td class="outcome">                                                                         
+                                {% if task.state == 'failed' or task.state == 'failed-no-retry-available' or task.state == 'failed-retry-limit-reached' %}                                                                                
                                     {% if task.output.result.isHttpClientErrorFailure %}
                                         {{ task.output.result.firstError.class|replace({'http-retrieval-': ''}) }}
                                         {{ task.output.result.firstError }}
@@ -71,18 +71,22 @@
                                         DNS timeout resolving the domain for the URL
                                     {% elseif task.output.result.isCurlUrlFormatFailure %}
                                         Bad URL format       
-                                    {% endif %}
+                                    {% elseif task.output.result.isHtmlInvalidDocumentTypeFailure %}
+                                        Invalid document type     
+                                    {% elseif task.output.result.isCssValidationUnknownExceptionError %}
+                                        Validator error   
+                                    {% endif %}                                        
                                 {% elseif task.state == 'completed' %}
-                                    {% if task.output.result.hasErrors %}
+                                    {% if task.output.hasErrors %}
                                         <span class="label label-important">Failed</span><span class="label label-important">
-                                            <a href="#error-list">{{ task.output.result.getErrorCount }} error{% if task.output.result.getErrorCount != 1 %}s{% endif %}</a>
+                                            <a href="#error-list">{{ task.output.getErrorCount }} error{% if task.output.getErrorCount != 1 %}s{% endif %}</a>
                                         </span>
                                     {% else %}
                                         <span class="label label-success">Passed</span>
                                     {% endif %}                                        
-                                    {% if task.output.result.hasWarnings %}
+                                    {% if task.output.hasWarnings %}
                                     <span class="label label-info">
-                                        <a href="#warning-list">{{ task.output.result.getWarningCount }} warning{% if task.output.result.getWarningCount != 1 %}s{% endif %}</a>
+                                        <a href="#warning-list">{{ task.output.getWarningCount }} warning{% if task.output.getWarningCount != 1 %}s{% endif %}</a>
                                     </span>                                            
                                     {% endif %}
                                 {% endif %}
@@ -96,7 +100,7 @@
             </section>
         </div>
 
-        {% if (task.state == 'completed' or task.state == 'failed' or task.state == 'failed-no-retry-available' or task.state == 'failed-retry-limit-reached') and (task.output.result.hasErrors or task.output.result.hasWarnings) %}
+        {% if (task.state == 'completed' or task.state == 'failed' or task.state == 'failed-no-retry-available' or task.state == 'failed-retry-limit-reached') and (task.output.hasErrors or task.output.hasWarnings) %}
         <div class="row-fluid">
             {% if task.state == 'failed' or task.state == 'failed-no-retry-available' or task.state == 'failed-retry-limit-reached' %}
             <section>                
@@ -234,18 +238,56 @@
 
                         <p>
                             There's something funny about that URL. It's not made right, it can't be used.
-                        </p>                        
+                        </p>                                              
+                    {% elseif task.output.result.isHtmlInvalidDocumentTypeFailure %}
+                        <h2 class="info"><i class="icon-exclamation-sign"></i> Invalid document type!</h2>
+                        
+                        <p>
+                            The page at <a href="{{ task.url }}">{{ task.url }}</a> contains an invalid
+                            doctype declaration:
+                        </p>
+                        
+                        <pre>{{ task.output.result.firstError.message }}</pre>
+
+                        
+                        <p>
+                            Have a look at <a href="http://www.w3.org/QA/2002/04/valid-dtd-list.html">recommended doctype declarations</a>
+                            and read more about <a href="http://en.wikipedia.org/wiki/Document_Type_Declaration">what a doctype declaration is</a>.
+                        </p>
+                        
+                        <p>
+                            
+                        </p>
+                    {% elseif task.output.result.isCssValidationUnknownExceptionError %}
+                        <h2 class="info"><i class="icon-exclamation-sign"></i> Unknown validator error!</h2>
+                        
+                        <p>
+                            Sorry, the CSS validator went bang when validating {{ task.url }}.
+                        </p>
+                        
+                        <p>
+                            This most commonly happens if the URL to be validated redirects to another URL. We're
+                            working to fix this.                            
+                        </p>
                     {% endif %}
                 </div>
                 <div class="clearfix"></div>
             </section>                 
-            {% else %}
-                {% if task.output.result.hasErrors %}
+            {% else %}                
+                {% if task.output.hasErrors %}
                 <span id="error-list" class="section-marker"></span>
             <section>                
                 <div class="span12">
-                    <h2 class="info"><i class="icon-ban-circle"></i> Errors ({{ task.output.result.errorCount }}) </h2>                    
+                    <h2 class="info"><i class="icon-ban-circle"></i> Errors ({{ task.output.errorCount }}) </h2>                    
                     {% if task.type == 'CSS validation' %}
+                        {% if task.output.hasErrors and not task.output.result.hasErrors %}
+                    <div class="span12 notification" id="task-summary">
+                        <p>
+                            Detailed results from this test are no longer available.
+                        </p>
+                    </div>
+                        {% endif %}                     
+                    
                         {% for ref,errors in errors_by_ref %}
                         <div>
                             <h3><i class="icon icon-file"></i> {% if ref == '' %}Inline in your HTML{% else %}{{ ref }}{% endif %}:</h3>                            
@@ -259,9 +301,17 @@
                         </div>
                         {% endfor %}
                     {% elseif task.type == 'JS static analysis' %}
+                        {% if task.output.hasErrors and not task.output.result.hasErrors %}
+                    <div class="span12 notification" id="task-summary">
+                        <p>
+                            Detailed results from this test are no longer available.
+                        </p>
+                    </div>
+                        {% endif %}                     
+                    
                         {% for context,errors in errors_by_js_context %}
                         <div>
-                            <h3><i class="icon icon-file"></i> {% if context == 'inline' %}Inline in your HTML{% else %}{{ context }}{% endif %}:</h3>                            
+                            <h3><i class="{% if errors[0].isException %}icon icon-ban-circle{% else %}icon icon-file{% endif %}"></i> {% if context == 'inline' %}Inline in your HTML{% else %}{{ context }}{% endif %}:</h3>                            
                             <ul class="errors">
                                 {% for error in errors %}
                                     <li>
@@ -272,7 +322,17 @@
                         </div>
                         {% endfor %}
                     {% else %}
+                        {% if task.output.hasErrors and not task.output.result.hasErrors %}
+                    <div class="span12 notification" id="task-summary">
+                        <p>
+                            Detailed results from this test are no longer available.
+                        </p>
+                    </div>
+                        {% endif %}                    
+                    
                     <ul class="errors">
+
+                        
                         {% for error in task.output.result.getErrors %}
                             <li>
                                 {% if task.type == 'HTML validation' %}

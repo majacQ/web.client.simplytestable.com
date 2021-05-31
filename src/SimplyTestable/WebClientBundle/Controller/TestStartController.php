@@ -4,19 +4,14 @@ namespace SimplyTestable\WebClientBundle\Controller;
 
 use SimplyTestable\WebClientBundle\Model\TestOptions;
 
-class TestStartController extends BaseController
-{    
-    private $allowedTestTypeMap = array(
-        'html-validation' => 'HTML validation',
-        'css-validation' => 'CSS validation'
-    );
-    
+class TestStartController extends TestController
+{
     
     public function startAction()
     {        
         $this->getTestService()->setUser($this->getUser());
         
-        $this->getTestOptionsRequestParserService()->setRequestData($this->getRequestValues(HTTP_METH_POST));
+        $this->getTestOptionsRequestParserService()->setRequestData($this->getRequestValues(\Guzzle\Http\Message\Request::POST));
         $testOptions = $this->getTestOptionsRequestParserService()->getTestOptions();
         
         if (!$this->hasWebsite()) {            
@@ -34,15 +29,74 @@ class TestStartController extends BaseController
             return $this->redirect($this->generateUrl('app', $this->getRedirectValues($testOptions), true));                
         }
         
-        $jsonResponseObject = $this->getTestService()->start($this->getWebsite(), $testOptions)->getContentObject();        
-        return $this->redirect($this->generateUrl(
-            'app_progress',
-            array(
-                'website' => $jsonResponseObject->website,
-                'test_id' => $jsonResponseObject->id
-            ),
-            true
-        ));
+        try {
+            $jsonResponseObject = $this->getTestService()->start($this->getTestUrl(), $testOptions, ($this->isFullTest() ? 'full site' : 'single url'))->getContentObject();
+            return $this->redirect($this->generateUrl(
+                'app_progress',
+                array(
+                    'website' => $jsonResponseObject->website,
+                    'test_id' => $jsonResponseObject->id
+                ),
+                true
+            ));
+        } catch (\Guzzle\Http\Exception\CurlException $curlException) {
+            $this->get('session')->setFlash('test_start_error', 'curl-error');
+            $this->get('session')->setFlash('curl_error_code', $curlException->getErrorNo());
+            return $this->redirect($this->generateUrl('app', $this->getRedirectValues($testOptions), true));
+        } catch (\SimplyTestable\WebClientBundle\Exception\WebResourceException $webResourceException) {                            
+            $this->getTestQueueService()->enqueue($this->getUser(), $this->getTestUrl(), $testOptions, ($this->isFullTest() ? 'full site' : 'single url'), $webResourceException->getResponse()->getStatusCode());
+            return $this->redirect($this->generateUrl(
+                'app_website',
+                array(
+                    'website' => $this->getTestUrl()                        
+                ),
+                true
+            ));
+        }
+    }
+    
+    
+    /**
+     * 
+     * @return type
+     */
+    private function getTestUrl() {
+        if ($this->isFullTest()) {
+            return $this->getCanonicalUrlFromWebsite($this->getWebsite());
+        }
+        
+        $url = new \webignition\NormalisedUrl\NormalisedUrl($this->getWebsite());
+        return (string)$url;
+    }
+    
+    
+    /**
+     * 
+     * @return boolean
+     */
+    private function isFullTest() {
+        /* @var $requestParameters \Symfony\Component\HttpFoundation\ParameterBag */
+        $requestParameters = $this->getRequestValues(\Guzzle\Http\Message\Request::POST);
+        if (!$requestParameters->has('full-single')) {
+            return true;
+        }
+        
+        return $requestParameters->get('full-single') == 'full';
+    }
+    
+    
+    /**
+     * 
+     * @param string $website
+     * @return string
+     */
+    private function getCanonicalUrlFromWebsite($website) {
+        $url = new \webignition\NormalisedUrl\NormalisedUrl($website);
+        $url->setFragment(null);
+        $url->setPath('/');
+        $url->setQuery(null);
+        
+        return (string)$url;
     }
     
     
@@ -69,118 +123,6 @@ class TestStartController extends BaseController
     
     /**
      * 
-     * @param string $name
-     * @return boolean
-     */
-    private function isOptionsSelected($name) {
-        return $this->getRequestValue($name) === "1";
-    }    
-    
-    
-    /**
-     * 
-     * @return array|boolean
-     */
-    private function getTestOptions() {
-        $testTypes = $this->getTestTypes();
-        
-        if (count($testTypes) == 0) {
-            return false;
-        }
-        
-        return array(
-            'test-types' => $testTypes
-        );
-    }
-    
-    
-    /**
-     * 
-     * @return array
-     */
-    private function getTestTypes() {
-        var_dump($this->getRequestValues(HTTP_METH_POST));
-        exit();
-        
-        $testTypes = array();
-        
-        foreach ($this->allowedTestTypeMap as $testTypeKey => $testTypeName) {
-            if ($this->getRequestValue($testTypeKey) === "1") {
-                $testTypes[$testTypeKey] = $testTypeName;
-            }
-        }              
-        
-        return $testTypes;
-    }
-    
-    
-    
-    
-    
-    public function cancelAction()
-    {
-        $this->getTestService()->setUser($this->getUser());
-        
-        if (!$this->hasWebsite()) {
-            $this->get('session')->setFlash('test_start_error', '');
-            return $this->redirect($this->generateUrl('app', array(), true));
-        }
-        
-        if ($this->getTestService()->cancel($this->getWebsite(), $this->getTestId())) {
-            return $this->redirect($this->generateUrl(
-                'app_results',
-                array(
-                    'website' => $this->getWebsite(),
-                    'test_id' => $this->getTestId()
-                ),
-                true
-            ));       
-        }
-    }
-    
-    
-    /**
-     *
-     * @return boolean
-     */
-    private function hasWebsite() {
-        return trim($this->getRequestValue('website')) != '';
-    }
-    
-    
-    /**
-     *
-     * @return string
-     */
-    private function getWebsite() {
-        $websiteUrl = $this->getNormalisedRequestUrl();
-        if (!$websiteUrl) {
-            return null;
-        }
-        
-        return (string)$websiteUrl; 
-    }
-    
-    
-    /**
-     *
-     * @return int 
-     */
-    private function getTestId() {
-        return $this->getRequestValue('test_id', 0);
-    }
-    
-    
-    /**
-     *
-     * @return \SimplyTestable\WebClientBundle\Services\TestService
-     */
-    private function getTestService() {
-        return $this->container->get('simplytestable.services.testservice');
-    }
-    
-    /**
-     * 
      * @return \SimplyTestable\WebClientBundle\Services\WebsiteBlockListService
      */
     private function getWebsiteBlockListService() {
@@ -196,5 +138,5 @@ class TestStartController extends BaseController
      */
     private function getTestOptionsRequestParserService() {
         return $this->container->get('simplytestable.services.testoptions.requestparserservice');
-    }    
+    }  
 }

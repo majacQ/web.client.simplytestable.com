@@ -17,12 +17,33 @@ class TestOptions {
     private $testTypeOptionsMap = array(
         'html-validation' => array(),
         'css-validation' => array(
-            'css-validation-ignore-warnings' => 'string',
-            'css-validation-ignore-common-cdns' => 'string',
-            'css-validation-vendor-extensions' => 'string',
-            'css-validation-domains-to-ignore' => 'array'
+            'css-validation-ignore-warnings' => array(
+                'type' => 'int',
+                'default' => 0
+            ),
+            'css-validation-ignore-common-cdns' => array(
+                'type' => 'int',
+                'default' => 0                
+            ),
+            'css-validation-vendor-extensions' => array(
+                'type' => 'string',
+                'default' => 'warn'               
+            ),
+            'css-validation-domains-to-ignore' => array(
+                'type' => 'array',
+                'default' => array()              
+            ),
         ),
-        'js-static-analysis' => array(),
+        'js-static-analysis' => array(
+            'js-static-analysis-ignore-common-cdns' => array(
+                'type' => 'int',
+                'default' => 0                
+            ),            
+            'js-static-analysis-domains-to-ignore' => array(
+                'type' => 'array',
+                'default' => array()              
+            ),            
+        ),
     );
     
     
@@ -136,26 +157,32 @@ class TestOptions {
         $absoluteTestTypeOptions = array();
         $testTypeOptions = $this->getTestTypeOptions($testType);
         
-        foreach ($this->testTypeOptionsMap[$testType] as $optionKey => $optionType) {
+        foreach ($this->testTypeOptionsMap[$testType] as $optionKey => $optionDefinition) {
             $key = ($useFullOptionKey) ? $optionKey : str_replace($testType.'-', '', $optionKey);
             
-            $optionValue = 0;
+            
             if (isset($testTypeOptions[$optionKey])) {
-                switch ($optionType) {
+                switch ($optionDefinition['type']) {
                     case 'array':
                         $optionValue = explode("\n", $testTypeOptions[$optionKey]);
                         foreach ($optionValue as $index => $value) {
                             $optionValue[$index] = trim($value);
                         }
                         break;
+                        
+                    case 'int':
+                        $optionValue = (int)$testTypeOptions[$optionKey];
+                        break;
 
                     default:
                         $optionValue = $testTypeOptions[$optionKey];
                         break;
                 }                
-            }
-            
-            $absoluteTestTypeOptions[$key] = $optionValue;
+            } else {
+                $optionValue = $optionDefinition['default'];
+            }            
+
+            $absoluteTestTypeOptions[$key] = $optionValue;                     
         }
         
         return $absoluteTestTypeOptions;
@@ -195,6 +222,32 @@ class TestOptions {
         }
         
         return $absoluteTestTypes;
+    }
+    
+    
+    /**
+     * 
+     * @return array
+     */
+    public function __toArray() {
+        $optionsAsArray = array();
+        
+        if ($this->hasTestTypes()) {
+            $optionsAsArray['test-types'] = $this->getTestTypes();
+            $testTypeKeys = $this->getTestTypeKeys();
+            
+            foreach ($testTypeKeys as $testTypeKey) {
+                $testType = $this->getNameFromKey($testTypeKey);                
+                
+                if (!isset($optionsAsArray['test-type-options'])) {
+                    $optionsAsArray['test-type-options'] = array();
+                }
+                
+                $optionsAsArray['test-type-options'][$testType] = $this->getAbsoluteTestTypeOptions($testTypeKey, false);
+            }
+        }
+        
+        return $optionsAsArray;   
     }
 
     

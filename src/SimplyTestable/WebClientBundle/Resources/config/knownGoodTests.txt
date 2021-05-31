@@ -2,7 +2,6 @@ http://corte.si/
 https://tindie.com/
 http://joelonsoftware.com/
 http://codeinthehole.com/
-http://themactivist.com/
 http://blog.simplytestable.com/
 http://webignition.net/
 http://www.sebastianmarshall.com/
@@ -116,7 +115,7 @@ http://www.smokymountainescapes.com/
 http://golfweek.com/
 http://www.zenzero.co.uk/
 http://winefolly.com/
-http://www.chinapaintsprayer.com/
+http://www.shmandarin.info/
 http://www.website.com/
 http://www.ztlights.com/
 http://review31.co.uk/
@@ -136,7 +135,6 @@ http://www.holidaysafe.co.uk/
 http://www.handymoves.co.uk/
 http://www.coreix.net/
 http://www.cardsmadeeasy.com/
-http://www.londonorthopaedic.com/
 http://www.doveridgeclaysports.co.uk/
 http://www.securityideas.com/
 https://www.djangoproject.com/
@@ -145,3 +143,20 @@ http://6300ac.com/
 http://easily.co.uk
 http://www.geekbox.net/
 http://www.the-quarter.com/
+http://blog.railsonfire.com/
+http://www.in-the-attic.co.uk/
+http://ikaisays.com/
+http://www.igvita.com/
+http://herbsutter.com/
+http://blog.filepicker.io/
+http://phys.org/
+https://goresponsa.com/
+http://www.technologyreview.com/
+http://www.the-quarter.com/
+http://blog.groovehq.com/
+http://blog.crowdtilt.com/
+http://blog.linode.com/
+http://alexmaccaw.com/
+http://segment.io/
+http://99u.com/
+http://blog.dubture.com/

@@ -1,13 +1,193 @@
 var application = {};
 
+application.results = {};
+application.results.preparingController = function () {
+
+    var nextTaskIdCollection = [];
+    
+    var getResultsUrl = function () {
+        return window.location.href.replace('/preparing/', '');
+    };
+    
+    var getUnretrievedRemoteTaskIdsUrl = function () {
+        return window.location.href.replace('/results/preparing/', '/tasks/ids/unretrieved/100/');
+    };
+    
+    var getTaskResultsRetrieveUrl = function () {        
+        return window.location.href.replace('/preparing/', '/retrieve/');
+    };
+    
+    var getRetrievalStatusUrl = function () {
+        return getTaskResultsRetrieveUrl() + 'status/';
+    };
+    
+    var getRetrievalStatus = function () {        
+        jQuery.ajax({
+            complete:function (request, textStatus) {
+                //console.log('complete', request, textStatus);
+            },
+            dataType:'json',
+            error:function (request, textStatus, errorThrown) {
+                //console.log('error', request, textStatus, request.getAllResponseHeaders());
+            },
+            statusCode: {
+                403: function () {
+                    console.log('403');
+                },
+                500: function () {
+                    console.log('500');
+                }
+            },
+            success: function (data, textStatus, request) {                
+                $('#completion-percent-value').text(data['completion-percent']);
+                $('#remaining-tasks-to-retrieve-count').attr('class', data['remaining-tasks-to-retrieve-count']);
+                
+                $('#completion-percent-bar').css({
+                    'width':data['completion-percent'] + '%'
+                });
+                
+                $('#local-task-count').text(data['local-task-count']);
+                $('#remote-task-count').text(data['remote-task-count']);
+                
+                initialise();
+            },
+            url:getRetrievalStatusUrl()
+        });         
+    };
+    
+    var retrieveNextRemoteTaskIdCollection = function () {
+        jQuery.ajax({
+            type:'POST',
+            complete:function (request, textStatus) {
+                //console.log('complete', request, textStatus);
+            },
+            dataType:'json',
+            error:function (request, textStatus, errorThrown) {
+                //console.log(' retrieveNextRemoteTaskIdCollection error', request, textStatus, errorThrown, request.getAllResponseHeaders());
+            },
+            statusCode: {
+                403: function () {
+                    console.log('403');
+                },
+                500: function () {
+                    console.log('500');
+                }
+            },
+            data:{
+                'remoteTaskIds':nextTaskIdCollection.join(',')
+            },
+            success: function (data, textStatus, request) {
+                getRetrievalStatus();
+            },
+            url:getTaskResultsRetrieveUrl()
+        }); 
+    };
+    var getNextRemoteTaskIdCollection = function () {
+//        getUnretrievedRemoteTaskIdsUrl();
+//        return;
+        
+        jQuery.ajax({
+            complete:function (request, textStatus) {
+                //console.log('complete', request, textStatus);
+            },
+            dataType:'json',
+            error:function (request, textStatus, errorThrown) {
+                //console.log('getNextRemoteTaskIdCollection error');
+            },
+            statusCode: {
+                403: function () {
+                    console.log('403');
+                },
+                500: function () {
+                    console.log('500');
+                }
+            },
+            success: function (data, textStatus, request) {
+                nextTaskIdCollection = data;
+                retrieveNextRemoteTaskIdCollection();
+            },
+            url:getUnretrievedRemoteTaskIdsUrl()
+        });        
+    };
+    
+    
+    var getRemainingTasksToRetrieveCount = function () {
+        return parseInt($('#remaining-tasks-to-retrieve-count').attr('class'), 10);
+    };
+    
+    var initialise = function () {
+        if (getRemainingTasksToRetrieveCount() === 0) {            
+            window.location.href = getResultsUrl();
+        } else {
+            getNextRemoteTaskIdCollection();
+        }
+        
+        
+    };
+    
+    this.initialise = initialise;
+};
+
 application.progress = {};
+
+application.progress.queuedTestController = function () {
+    
+    var checkState = function () {
+        var now = new Date();
+        
+        var getStatusUrl = function () {            
+            return window.location.href + 'status/?timestamp=' + now.getTime();            
+        };
+        
+        var getNotQueuedRedirectUrl = function () {
+            return window.location.href.replace('/queued/', '/'); 
+        };
+        
+        jQuery.ajax({
+            complete:function (request, textStatus) {
+                //console.log('complete', request, textStatus);
+            },
+            dataType:'json',
+            error:function (request, textStatus, errorThrown) {
+                console.log('error', request, textStatus, request.getAllResponseHeaders());
+            },
+            statusCode: {
+                403: function () {
+                    console.log('403');
+                },
+                500: function () {
+                    console.log('500');
+                }
+            },
+            success: function (data, textStatus, request) {                
+                if (data === 'not queued') {
+                    window.location.href = getNotQueuedRedirectUrl();
+                    return;                    
+                }
+                
+                window.setTimeout(function () {
+                    checkState();
+                }, 3000);
+            },
+            url:getStatusUrl()
+        });
+    };
+    
+    this.initialise = function () {
+        checkState();
+    };
+};
+
 application.progress.testController = function () {    
     var latestTestData = {};
+    var estimatedTimeRemainingHistory = [];
+    var estimatedTimeRemainingUpdateThreshold = 10;
+    var estimatedTimeRemainingIsFirstDisplay = true;
     
     var setCompletionPercentValue = function () {
         var completionPercentValue = $('#completion-percent-value');
         
-        if (completionPercentValue.text() != latestTestData.completion_percent) {
+        if (completionPercentValue.text() !== latestTestData.completion_percent) {
             completionPercentValue.text(latestTestData.completion_percent);
             
             if ($('html.csstransitions').length > 0) {
@@ -24,7 +204,7 @@ application.progress.testController = function () {
     
     var setCompletionPercentStateLabel = function () {
         var completionPercentStateLabel = $('#completion-percent-state-label');
-        if (completionPercentStateLabel.text() != latestTestData.state_label) {
+        if (completionPercentStateLabel.text() !== latestTestData.state_label) {
             completionPercentStateLabel.text(latestTestData.state_label);
         }         
     };
@@ -37,7 +217,7 @@ application.progress.testController = function () {
     var getTestQueueWidth = function (queueName) {        
         var minimumQueueWidth = 2; 
         
-        if (latestTestData.task_count_by_state[queueName] == 0) {
+        if (latestTestData.task_count_by_state[queueName] === 0) {
             return minimumQueueWidth;
         }
         
@@ -72,6 +252,90 @@ application.progress.testController = function () {
         $('#test-summary-task-count').text(latestTestData.remote_test_summary.task_count);
     };
     
+    var storeEstimatedTimeRemaining = function () {
+        if (latestTestData.estimated_seconds_remaining === -1) {
+            return;
+        }
+        
+        estimatedTimeRemainingHistory.push(latestTestData.estimated_seconds_remaining);
+        
+        if (estimatedTimeRemainingHistory.length >= estimatedTimeRemainingUpdateThreshold) {            
+            setEstimatedTimeRemaining();
+            estimatedTimeRemainingHistory = [];
+        }
+    };
+    
+    var setEstimatedTimeRemaining = function () {
+        if (estimatedTimeRemainingHistory.length === 1 && estimatedTimeRemainingHistory[0] < 1) {
+            return;
+        }
+        
+        var timeRemainingString = 'About ' + formatEstimatedTimeRemaining(calculateEstimatedTimeRemaining()) + ' remaining';
+        
+        if (estimatedTimeRemainingIsFirstDisplay === true) {
+            estimatedTimeRemainingIsFirstDisplay = false;
+            $('#completion-time-remaining').css({
+                'display':'none'
+            }).text(timeRemainingString).fadeIn();
+            
+        } else {            
+            $('#completion-time-remaining').text(timeRemainingString);
+        }              
+    };
+    
+    var formatEstimatedTimeRemaining = function (durationInSeconds) {
+        var now = new Date().getTime();
+        var endTimestamp = now + (durationInSeconds * 1000);
+        
+        return moment(endTimestamp).fromNow(true);
+    };
+    
+    var calculateEstimatedTimeRemaining = function () {        
+        var average = function(a) {
+            var r = {mean: 0, variance: 0, deviation: 0}, t = a.length;
+            for (var m, s = 0, l = t; l--; s += a[l]);
+            for (m = r.mean = s / t, l = t, s = 0; l--; s += Math.pow(a[l] - m, 2));
+            return r.deviation = Math.sqrt(r.variance = s / t), r;
+        };
+        
+        var getSubsetWithinStandardDeviation = function (averageData) {            
+            var withinStdDev = averageData.deviation / (averageData.mean / 10);
+            var withinStd = function(mean, val, stdev) {
+                var low = mean-(stdev*averageData.deviation);
+                var hi = mean+(stdev*averageData.deviation);
+                return (val > low) && (val < hi);
+            };           
+            
+            var subset = [];
+            
+            for (var index = 0; index < estimatedTimeRemainingHistory.length; index++) {
+                if (withinStd(averageData.mean, estimatedTimeRemainingHistory[index], withinStdDev)) {
+                    subset.push(estimatedTimeRemainingHistory[index]);
+                }
+            }
+            
+            return subset;            
+        };      
+        
+        var averageData = average(estimatedTimeRemainingHistory);        
+        var subset = getSubsetWithinStandardDeviation(averageData);
+        
+        var subsetAverageData = average(subset);
+        
+//        console.log(estimatedTimeRemainingHistory);
+//        console.log(subset);
+//        console.log(averageData);
+//        console.log(averageData.mean);
+//        console.log(subsetAverageData);
+//        console.log(subsetAverageData.mean);        
+//        
+//        console.log('from latest', formatEstimatedTimeRemaining(estimatedTimeRemainingHistory[0]));
+//        console.log('from mean', formatEstimatedTimeRemaining(averageData.mean));
+//        console.log('from subset mean', formatEstimatedTimeRemaining(subsetAverageData.mean));
+        
+        return subsetAverageData.mean;
+    };
+    
     var refreshTestSummary = function () {
         var now = new Date();
         
@@ -96,7 +360,7 @@ application.progress.testController = function () {
                 }
             },
             success: function (data, textStatus, request) {                
-                if (data.this_url != window.location.href) {
+                if (data.this_url != window.location.href) {                    
                     window.location.href = data.this_url;
                     return;
                 }
@@ -109,6 +373,7 @@ application.progress.testController = function () {
                 setTestQueues();
                 setUrlCount();               
                 setTaskCount();
+                storeEstimatedTimeRemaining();
                 
                 window.setTimeout(function () {
                     refreshTestSummary(10);
@@ -580,7 +845,7 @@ application.progress.taskController = function () {
             taskSetListItem.append('<span class="url" />');
         }
         
-        $('.url', taskSetListItem).html(tasks[0]['url']);
+        $('.url', taskSetListItem).html(punycode.toUnicode(tasks[0]['url']));
 
         for (var taskIndex = 0; taskIndex < tasks.length; taskIndex++) {
             updateTaskListItem(getTaskListItem(taskSetListItem, tasks[taskIndex]), tasks[taskIndex]);
@@ -687,7 +952,7 @@ application.progress.taskController = function () {
         callback();
     };
     
-    var initialise = function () {        
+    var initialise = function () {         
         taskOutputController = new application.progress.taskOutputController();
         
         if (getUrlCount() === 0 || getTaskCount() === 0 || getTaskIds() === null) {
@@ -1134,12 +1399,28 @@ application.progress.taskOutputController = function () {
 application.pages = {
     '/*':{
         'initialise':function () {
-            if ($('body.app-progress').length > 0) {                
+            if ($('body.app-queued').length > 0) {                
+                queuedTestController = new application.progress.queuedTestController();
+                queuedTestController.initialise();
+                
+//                testProgressController = new application.progress.testController();
+//                testProgressController.initialise();
+//                
+//                taskProgressController = new application.progress.taskController();
+//                taskProgressController.initialise();
+            }
+            
+            if ($('body.app-progress').length > 0 && $('body.app-queued').length === 0) {                
                 testProgressController = new application.progress.testController();
                 testProgressController.initialise();
                 
                 taskProgressController = new application.progress.taskController();
                 taskProgressController.initialise();
+            }
+            
+            if ($('body.app-results-preparing').length > 0) {                
+                resultsPreparingController = new application.results.preparingController();
+                resultsPreparingController.initialise();
             }
             
             if ($('body.content').length > 0) {                

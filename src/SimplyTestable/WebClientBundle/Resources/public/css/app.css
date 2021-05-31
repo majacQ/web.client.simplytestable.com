@@ -101,11 +101,7 @@ section.top {
 }
 
 #main #input .fields input {
-    width:65%;
-}
-
-#main #input .fields button {
-    width:30%;
+    width:60%;
 }
 
 #main #input .fields button i {
@@ -443,14 +439,24 @@ body.single-page-dialog #main button.submit {
     margin-top:20px;
 }
 
+
 form .larger input {
+    font-size: 15px;
+    padding: 12px 9px 12px 9px;      
+}
+
+body.app-progress form .larger input {
     font-size: 15px;
     padding: 14px 9px 13px 9px;      
 }
 
-body.app form .larger input {
-    font-size: 15px;
-    padding: 14px 9px 13px 9px;      
+body.app #input .btn-primary,
+body.app-results #input .btn-primary {    
+    width:20%;
+}
+
+body.app-progress #input .btn-primary {
+    width:30%;
 }
 
 form .larger button {
@@ -480,12 +486,11 @@ div.input-secondary {
 
 .navbar .user-link,
 .navbar form.sign-out-form .icon-user {
-    border-left: 1px solid #999;
     padding-left:10px;
 }
 
 .navbar  form.sign-out-form {
-    margin:0;
+    margin:1px 0 0 0;
     padding:0;
 }
 
@@ -661,22 +666,26 @@ opacity: 0.8;
 top: 40px;    
 }
 
-#test-options .css-ignore-common-cdn-domains ul {
+#test-options .ignore-common-cdn-domains ul {
 margin: 0;
 padding: 0;    
 }
 
-#test-options .css-ignore-common-cdn-domains ul li {
+#test-options .ignore-common-cdn-domains ul li {
     list-style-type: none;
     opacity:0.8;
 }
 
-body.app .css-domains-to-ignore textarea {
-    width:100%;
+.css-domains-to-ignore textarea {
+    width:60%;
 }
 
 #test-options .test-options-advanced {
     margin-left: 18px;
+}
+
+body.app-progress #test-options .test-options-advanced {
+    margin-left:0;
 }
 
 
@@ -721,6 +730,18 @@ body.app-progress .test-options-advanced ul li {
    margin-bottom: 4px;
 }
 
+body.app-results-preparing h1 {
+    margin-bottom: 40px;
+}
+
+body.app-results-preparing .summary {
+    margin-top: 30px;    
+}
+
+body.app-results-preparing #completion-percent {
+
+}
+
 @media (min-width: 1200px) {
     body.single-page-dialog #main input {
         width:96%;
@@ -737,4 +758,80 @@ body.app-progress .test-options-advanced ul li {
     body.app-task-results .errors .content {        
         width:82%;
     }    
+}
+
+body.sign-in #stay-signed-in-container {
+    margin-left:100px;
+    margin-top:-30px;
+}
+
+#stay-signed-in-container span {
+    opacity: 0.8;
+}
+
+body.single-page-dialog #stay-signed-in-container input {
+    width:auto;
+}
+
+body.app-progress #completion-time-remaining {
+    padding:0;
+    margin: -10px 0 -10px 0;
+    opacity: 0.6;
+}
+
+body.account h1,
+body.account h2,
+body.account h3,
+body.account h4 {
+    font-weight: normal;
+}
+
+body.account h1 {
+    font-size:32px;
+    line-height: 44px;
+}
+
+body.account h2 {
+    font-size:26px;
+    line-height: 34px;
+    opacity:0.7;
+}
+
+body.account h3 {
+    font-size:18px;
+    line-height: 24px;
+    opacity:0.7;
+}
+
+body.account .account-details label {
+    width:140px;
+}
+
+body.account .plan table {
+    
+}
+
+body.account .plan th {
+    padding-left: 0;
+    font-weight: normal;
+}
+
+body.account .plan-section {
+    margin-bottom:30px;
+}
+
+body.account .confirm-email-change form {
+    margin-left: -16px;
+}
+
+body.account .confirm-email-change form #token {
+    width:100%;
+}
+
+.navbar-link {
+    text-decoration:none;    
+}
+
+.navbar-link:hover {
+    text-decoration:none;
 }

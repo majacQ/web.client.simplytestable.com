@@ -94,7 +94,7 @@ class Task {
      *
      * @var TaskOutput
      * 
-     * @ORM\OneToOne(targetEntity="SimplyTestable\WebClientBundle\Entity\Task\Output", mappedBy="task", cascade={"persist"})
+     * @ORM\ManyToOne(targetEntity="SimplyTestable\WebClientBundle\Entity\Task\Output")
      * @SerializerAnnotation\Expose
      */
     private $output;
@@ -148,6 +148,22 @@ class Task {
     {
         return $this->url;
     }
+    
+    
+    /**
+     * 
+     * @return string
+     */
+    public function getNormalisedUrl() {
+        $url = (string)$this->getUrl();
+        if ($url == '') {
+            return $url;
+        }
+        
+        $normalisedUrl = new NormalisedUrl($url);
+        return (string)$normalisedUrl;
+    }
+    
 
     /**
      * Set state

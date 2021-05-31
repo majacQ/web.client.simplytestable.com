@@ -7,8 +7,11 @@ use SimplyTestable\WebClientBundle\Entity\Task\Task;
 use Symfony\Bundle\FrameworkBundle\Controller\Controller;
 use Symfony\Component\HttpFoundation\Response;
 
-class TaskController extends BaseViewController
+class TaskController extends TestViewController
 {  
+    const DEFAULT_UNRETRIEVED_TASKID_LIMIT = 100;
+    const MAX_UNRETRIEVED_TASKID_LIMIT = 1000;
+    
     private $finishedStates = array(
         'cancelled',
         'completed',
@@ -27,45 +30,71 @@ class TaskController extends BaseViewController
     public function collectionAction($website, $test_id) {
         $this->getTestService()->setUser($this->getUser());
         
-        if (!$this->getTestService()->has($website, $test_id, $this->getUser())) {
-            return $this->sendNotFoundResponse();
-        }
-        
-        $test = $this->getTestService()->get($website, $test_id, $this->getUser());        
-        $taskIds = $this->getRequestTaskIds();               
-        $tasks = $this->getTaskService()->getCollection($test, $taskIds);
-        
-        foreach ($tasks as $task) {
-            if (in_array($task->getState(), $this->finishedStates)) {
-                if ($task->hasOutput()) {             
-                    $parser = $this->getTaskOutputResultParserService()->getParser($task->getOutput());
-                    $parser->setOutput($task->getOutput());
+        try {            
+            $test = $this->getTestService()->get($website, $test_id, $this->getUser());        
+            $taskIds = $this->getRequestTaskIds();               
+            $tasks = $this->getTaskService()->getCollection($test, $taskIds);
 
-                    $task->getOutput()->setResult($parser->getResult());
+            foreach ($tasks as $task) {
+                if (in_array($task->getState(), $this->finishedStates)) {
+                    if ($task->hasOutput()) {             
+                        $parser = $this->getTaskOutputResultParserService()->getParser($task->getOutput());
+                        $parser->setOutput($task->getOutput());
+
+                        $task->getOutput()->setResult($parser->getResult());
+                    }
                 }
             }
-            
-//            if (in_array($task->getState(), $this->failedStates)) {
-//                $task->setState('failed');
-//            }
-        }
 
-        return new Response($this->getSerializer()->serialize($tasks, 'json'));
+            return new Response($this->getSerializer()->serialize($tasks, 'json'));        
+        } catch (\SimplyTestable\WebClientBundle\Exception\UserServiceException $userServiceException) {
+            return $this->sendNotFoundResponse();            
+        } catch (\SimplyTestable\WebClientBundle\Exception\WebResourceException $webResourceException) {
+            return new Response($this->getSerializer()->serialize(null, 'json'));
+        } catch (\Guzzle\Http\Exception\RequestException $requestException)  {
+            return new Response($this->getSerializer()->serialize(null, 'json'));
+        }
     }
     
     
     public function idCollectionAction($website, $test_id) {        
         $this->getTestService()->setUser($this->getUser());
         
+        try {            
+            $test = $this->getTestService()->get($website, $test_id, $this->getUser());        
+            $taskIds = $this->getTaskService()->getRemoteTaskIds($test);
+
+            return new Response($this->getSerializer()->serialize($taskIds, 'json'));          
+        } catch (\SimplyTestable\WebClientBundle\Exception\UserServiceException $userServiceException) {
+            return $this->sendNotFoundResponse();            
+        } catch (\SimplyTestable\WebClientBundle\Exception\WebResourceException $webResourceException) {
+            return new Response($this->getSerializer()->serialize(null, 'json'));
+        } catch (\Guzzle\Http\Exception\RequestException $requestException)  {
+            return new Response($this->getSerializer()->serialize(null, 'json'));
+        }
+    }    
+    
+    
+    public function unretrievedIdCollectionAction($website, $test_id, $limit = null) {
+        $this->getTestService()->setUser($this->getUser());
+        
         if (!$this->getTestService()->has($website, $test_id, $this->getUser())) {
             return $this->sendNotFoundResponse();
         }
         
-        $test = $this->getTestService()->get($website, $test_id, $this->getUser());        
-        $taskIds = $this->getTaskService()->getRemoteTaskIds($test);
-
-        return new Response($this->getSerializer()->serialize($taskIds, 'json'));
-    }   
+        $test = $this->getTestService()->get($website, $test_id, $this->getUser());
+        $limit = filter_var($limit, FILTER_VALIDATE_INT);
+        if ($limit === false) {
+            $limit = self::DEFAULT_UNRETRIEVED_TASKID_LIMIT;
+        }
+        
+        if ($limit > self::MAX_UNRETRIEVED_TASKID_LIMIT) {
+            $limit = self::MAX_UNRETRIEVED_TASKID_LIMIT;
+        }
+        
+        $taskIds = $this->getTaskService()->getUnretrievedRemoteTaskIds($test, $limit);//
+        return new Response($this->getSerializer()->serialize($taskIds, 'json'));        
+    }
     
     
     /**
@@ -98,14 +127,9 @@ class TaskController extends BaseViewController
     public function resultsAction($website, $test_id, $task_id) {        
         $this->getTestService()->setUser($this->getUser());
         
-        if (!$this->getTestService()->has($website, $test_id, $this->getUser())) {
-            return $this->redirect($this->generateUrl('app', array(), true));
+        if ($this->isUsingOldIE()) {
+            return $this->forward('SimplyTestableWebClientBundle:App:outdatedBrowser');
         }
-        
-        /**
-            'user' => $this->getUser(),
-            'is_logged_in' => !$this->getUserService()->isPublicUser($this->getUser()),
-         */
         
         $cacheValidatorIdentifier = $this->getCacheValidatorIdentifier(array(
             'website' => $website,
@@ -118,19 +142,24 @@ class TaskController extends BaseViewController
         $response = $this->getCachableResponse(new Response(), $cacheValidatorHeaders);
         if ($response->isNotModified($this->getRequest())) {
             return $response;
+        }        
+        
+        $testRetrievalOutcome = $this->getTestRetrievalOutcome($website, $test_id);
+        if ($testRetrievalOutcome->hasResponse()) {
+            return $testRetrievalOutcome->getResponse();
         }
-
-        $test = $this->getTestService()->get($website, $test_id, $this->getUser());
+        
+        $test = $testRetrievalOutcome->getTest();        
         $task = $this->getTaskService()->get($test, $task_id);
         
-        $this->getCssValidationErrorsGroupedByRef($task);
-        
-        if ($task->getState() == 'completed' || $task->getState() == 'failed') {
-            if ($this->getTaskOutputService()->has($test, $task)) {
-                $task->setOutput($this->getTaskOutputService()->get($test, $task));
-                $this->getTaskOutputService()->setParsedOutput($task);
-            }                
+        if (is_null($task)) {
+            return $this->redirect($this->generateUrl('app_test_redirector', array(
+                'website' => $website,
+                'test_id' => $test_id
+            )));            
         }
+        
+        $this->getCssValidationErrorsGroupedByRef($task);         
         
         $viewData = array(
                 'test' => $test,
@@ -223,7 +252,7 @@ class TaskController extends BaseViewController
      *
      * @return \SimplyTestable\WebClientBundle\Services\TestService 
      */
-    private function getTestService() {
+    protected function getTestService() {
         return $this->container->get('simplytestable.services.testservice');
     }  
     
@@ -232,18 +261,9 @@ class TaskController extends BaseViewController
      *
      * @return \SimplyTestable\WebClientBundle\Services\TaskService 
      */
-    private function getTaskService() {
+    protected function getTaskService() {
         return $this->container->get('simplytestable.services.taskservice');
-    }      
-    
-    
-    /**
-     *
-     * @return \SimplyTestable\WebClientBundle\Services\TaskOutputService 
-     */
-    private function getTaskOutputService() {
-        return $this->container->get('simplytestable.services.taskoutputservice');
-    }   
+    }
     
     
     /**

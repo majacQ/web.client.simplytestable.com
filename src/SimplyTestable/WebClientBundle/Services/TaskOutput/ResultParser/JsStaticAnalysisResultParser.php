@@ -8,27 +8,31 @@ use SimplyTestable\WebClientBundle\Entity\Task\Output;
 
 class JsStaticAnalysisResultParser extends ResultParser {    
     
-    /**
-     * @return Result
-     */
-    public function getResult() {        
+    
+    protected function buildResult() {
         $result = new Result();
         
         $rawOutputObject = json_decode($this->getOutput()->getContent());
         
-        if (!$this->hasErrors($rawOutputObject)) {
+        if ($this->isErrorFreeOutput($rawOutputObject)) {
             return $result;
-        }           
+        }
         
-        foreach ($rawOutputObject as $jsSourceReference => $entriesObject) {            
+        foreach ($rawOutputObject as $jsSourceReference => $analysisOutput) {            
             $context = ($this->isInlineJsOutputKey($jsSourceReference)) ? 'inline' : $jsSourceReference;
             
-            foreach ($entriesObject->entries as $entryObject) {                
-                $result->addMessage($this->getMessageFromEntryObject($entryObject, $context));
+            if ($this->hasResultEntries($analysisOutput)) {
+                foreach ($analysisOutput->entries as $entryObject) {                
+                    $result->addMessage($this->getMessageFromEntryObject($entryObject, $context));
+                }                
+            } else {
+                if ($this->isFailureResult($analysisOutput)) {
+                    $result->addMessage($this->getFailureMEssageFromAnalysisOutput($analysisOutput, $context));                 
+                }                
             }
         }
         
-        return $result;
+        return $result;        
     }
     
     
@@ -37,8 +41,58 @@ class JsStaticAnalysisResultParser extends ResultParser {
      * @param \stdClass $rawOutputObject
      * @return boolean
      */
-    private function hasErrors(\stdClass $rawOutputObject) {
-        foreach ($rawOutputObject as $jsSourceReference => $entriesObject) {            
+    private function isErrorFreeOutput($rawOutputObject) {
+        if (is_array($rawOutputObject)) {
+            return true;
+        } 
+        
+        if (is_null($rawOutputObject)) {
+            return true;
+        } 
+        
+        if (!$this->hasErrors($rawOutputObject)) {
+            return true;
+        } 
+        
+        return false;
+    }
+    
+    
+    /**
+     * 
+     * @param \stdClass $analysisOutput
+     * @return boolean
+     */
+    private function isFailureResult(\stdClass $analysisOutput) {
+        if (!isset($analysisOutput->statusLine)) {
+            return false;
+        }
+        
+        return $analysisOutput->statusLine == 'failed';
+    }
+    
+    
+    /**
+     * 
+     * @param \stdClass $analysisOutput
+     * @return boolean
+     */
+    private function hasResultEntries(\stdClass $analysisOutput) {
+        return isset($analysisOutput->entries);
+    }
+    
+    
+    /**
+     * 
+     * @param \stdClass $rawOutputObject
+     * @return boolean
+     */
+    private function hasErrors(\stdClass $rawOutputObject) {        
+        foreach ($rawOutputObject as $jsSourceReference => $entriesObject) {
+            if (isset($entriesObject->statusLine) && $entriesObject->statusLine == 'failed') {
+                return true;
+            }
+            
             if (count($entriesObject->entries)) {
                 return true;
             }
@@ -75,6 +129,25 @@ class JsStaticAnalysisResultParser extends ResultParser {
         $message->setFragment($entryObject->fragmentLine->fragment);
         
         return $message;
+    }
+    
+    
+    /**
+     * 
+     * @param \stdClass $analysisOutput
+     * @return \SimplyTestable\WebClientBundle\Model\TaskOutput\JsTextFileMessage
+     */
+    private function getFailureMEssageFromAnalysisOutput(\stdClass $analysisOutput, $context) {        
+        $message = new JsTextFileMessage();
+        $message->setType('error');
+        $message->setContext($context);
+        
+        $message->setColumnNumber(0);
+        $message->setLineNumber(0);
+        $message->setMessage($analysisOutput->errorReport->statusCode);
+        $message->setFragment($analysisOutput->errorReport->reason);
+        
+        return $message;        
     }
     
 }
