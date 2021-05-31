@@ -9,7 +9,13 @@ use SimplyTestable\WebClientBundle\Model\TaskOutput\Result;
 /**
  * 
  * @ORM\Entity
- * @ORM\Table(name="TaskOutput")
+ * @ORM\Table(name="TaskOutput",
+ *     indexes={
+ *         @ORM\Index(name="hash_idx", columns={"hash"})
+ *     }
+ * )
+ * @ORM\Entity(repositoryClass="SimplyTestable\WebClientBundle\Repository\TaskOutputRepository")
+ * 
  * @SerializerAnnotation\ExclusionPolicy("all") 
  */
 class Output {
@@ -45,19 +51,34 @@ class Output {
     
     /**
      *
-     * @var SimplyTestable\WebClientBundle\Entity\Task\Task
-     * 
-     * @ORM\OneToOne(targetEntity="SimplyTestable\WebClientBundle\Entity\Task\Task", inversedBy="output")
-     * @ORM\JoinColumn(name="task_id", referencedColumnName="id", nullable=false)     
+     * @var Result 
      */
-    protected $task;
+    private $result;
     
     
     /**
      *
-     * @var Result 
+     * @var integer
+     * @ORM\Column(type="integer", nullable=false)
+     * @SerializerAnnotation\Expose
+     */    
+    private $errorCount = 0;
+    
+    
+    /**
+     *
+     * @var integer
+     * @ORM\Column(type="integer", nullable=false)
+     * @SerializerAnnotation\Expose
      */
-    private $result;
+    private $warningCount = 0;
+    
+    /**
+     *
+     * @var string
+     * @ORM\Column(type="string", nullable=true, length=32)
+     */
+    protected $hash;       
     
 
     /**
@@ -116,29 +137,6 @@ class Output {
     {
         return $this->type;
     }
-
-    /**
-     * Set task
-     *
-     * @param SimplyTestable\WebClientBundle\Entity\Task\Task $task
-     * @return Output
-     */
-    public function setTask(\SimplyTestable\WebClientBundle\Entity\Task\Task $task)
-    {
-        $this->task = $task;
-    
-        return $this;
-    }
-
-    /**
-     * Get task
-     *
-     * @return \SimplyTestable\WebClientBundle\Entity\Task\Task 
-     */
-    public function getTask()
-    {
-        return $this->task;
-    }
     
     
     /**
@@ -170,4 +168,115 @@ class Output {
     {
         return $this->result;
     }
+    
+    /**
+     * Set error count
+     *
+     * @param int $errorCount
+     * @return Output
+     */
+    public function setErrorCount($errorCount)
+    {
+        $this->errorCount = $errorCount;
+    
+        return $this;
+    }
+
+    /**
+     * Get error count
+     *
+     * @return int 
+     */
+    public function getErrorCount()
+    {
+        return $this->errorCount;
+    }
+    
+    
+    /**
+     *
+     * @return boolean
+     */
+    public function hasErrors() {
+        return $this->getErrorCount() > 0;
+    }
+    
+    
+    /**
+     * Set warningCount
+     *
+     * @param integer $warningCount
+     * @return Output
+     */
+    public function setWarningCount($warningCount)
+    {
+        $this->warningCount = $warningCount;
+    
+        return $this;
+    }
+
+    /**
+     * Get warningCount
+     *
+     * @return integer 
+     */
+    public function getWarningCount()
+    {
+        return $this->warningCount;
+    }    
+    
+    
+    /**
+     * 
+     * @return boolean
+     */
+    public function hasWarnings() {
+        return $this->getWarningCount() > 0;
+    }
+    
+    
+    /**
+     * Set hash
+     *
+     * @param string $hash
+     * @return Task
+     */
+    public function setHash($hash)
+    {
+        $this->hash = $hash;
+    
+        return $this;
+    }
+
+    /**
+     * Get hash
+     *
+     * @return string
+     */
+    public function getHash()
+    {
+        return $this->hash;
+    } 
+    
+    
+    /**
+     * 
+     * @return Task
+     */
+    public function generateHash() {        
+        return $this->setHash(md5('content:'.$this->getContent().'
+        type:'.$this->getType().'
+        error-count:'.$this->getErrorCount().'
+        warning-count:'.$this->getWarningCount()));
+    } 
+    
+    
+    /**
+     * 
+     * @return boolean
+     */
+    public function hasId() {
+        return !is_null($this->getId());
+    }
+    
 }

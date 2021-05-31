@@ -3,7 +3,7 @@
 namespace SimplyTestable\WebClientBundle\Services\TaskOutput\ResultParser;
 
 use SimplyTestable\WebClientBundle\Model\TaskOutput\Result;
-use SimplyTestable\WebClientBundle\Model\TaskOutput\TextFileMessage;
+use SimplyTestable\WebClientBundle\Model\TaskOutput\HtmlTextFileMessage;
 use SimplyTestable\WebClientBundle\Entity\Task\Output;
 
 class HtmlValidationResultParser extends ResultParser {    
@@ -37,17 +37,18 @@ class HtmlValidationResultParser extends ResultParser {
         $propertyToMethodMap = array(
             'lastColumn' => 'setColumnNumber',
             'lastLine' => 'setLineNumber',
-            'message' => 'setMessage'
+            'message' => 'setMessage',
+            'messageId' => 'setClass'
         );
         
-        $message = new TextFileMessage();
+        $message = new HtmlTextFileMessage();
         $message->setType($rawMessageObject->type);
         
         foreach ($propertyToMethodMap as $property => $methodName) {
             if (isset($rawMessageObject->$property)) {
                 $message->$methodName($rawMessageObject->$property);
             }
-        }    
+        }
         
         return $message;
     }

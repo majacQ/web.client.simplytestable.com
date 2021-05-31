@@ -18,12 +18,15 @@ framework:
     templating:      { engines: ['twig'] } #assets_version: SomeVersionScheme
     default_locale:  %locale%
     trust_proxy_headers: false # Whether or not the Request object should trust proxy headers (X_FORWARDED_FOR/HTTP_CLIENT_IP)
-    session:         ~
+    session:
+      cookie_domain: .simplytestable.com
+      save_path: "%simplytestable_session_savepath%"
 
 # Twig Configuration
 twig:
     debug:            %kernel.debug%
     strict_variables: %kernel.debug%
+    exception_controller:  SimplyTestable\WebClientBundle\Controller\ExceptionController::showAction      
 
 # Assetic Configuration
 assetic:
@@ -55,6 +58,7 @@ doctrine:
 
 # Swiftmailer Configuration
 swiftmailer:
+    auth_mode: %mailer_auth_mode%  
     transport: %mailer_transport%
     host:      %mailer_host%
     username:  %mailer_user%

@@ -5,13 +5,23 @@ use Doctrine\ORM\EntityManager;
 use SimplyTestable\WebClientBundle\Entity\Test\Test;
 use SimplyTestable\WebClientBundle\Entity\Task\Task;
 use SimplyTestable\WebClientBundle\Entity\TimePeriod;
+use Symfony\Component\HttpKernel\Log\LoggerInterface as Logger;
+use SimplyTestable\WebClientBundle\Model\User;
+use SimplyTestable\WebClientBundle\Exception\UserServiceException;
+use SimplyTestable\WebClientBundle\Model\TestOptions;
 
 use webignition\NormalisedUrl\NormalisedUrl;
 
 
-class TestService extends CoreApplicationService {    
+class TestService extends CoreApplicationService {        
     
     const ENTITY_NAME = 'SimplyTestable\WebClientBundle\Entity\Test\Test';      
+    
+    /**
+     *
+     * @var Logger
+     */
+    private $logger;     
     
     /**
      *
@@ -33,24 +43,102 @@ class TestService extends CoreApplicationService {
      */
     private $taskOutputService;
     
+    /**
+     *
+     * @var \SimplyTestable\WebClientBundle\Services\TaskService
+     */
+    private $taskService;
+    
+    
+    /**
+     *
+     * @var \stdClass
+     */
+    private $remoteTestSummary = null;
+    
+    
+    /**
+     *
+     * @var Test
+     */
+    private $currentTest = null;
+    
     
     public function __construct(
         EntityManager $entityManager,
         $parameters,
         \SimplyTestable\WebClientBundle\Services\WebResourceService $webResourceService,
-        \SimplyTestable\WebClientBundle\Services\TaskOutputService $taskOutputService        
+        \SimplyTestable\WebClientBundle\Services\TaskOutputService $taskOutputService,
+        Logger $logger,
+        \SimplyTestable\WebClientBundle\Services\TaskService $taskService
     ) {
         parent::__construct($parameters, $webResourceService);
         $this->entityManager = $entityManager; 
         $this->taskOutputService = $taskOutputService;
-    }     
+        $this->logger = $logger;
+        $this->taskService = $taskService;
+    } 
     
     
-    public function start($canonicalUrl) {
+    public function persist(Test $test) {
+        $this->entityManager->persist($test);
+        $this->entityManager->flush();
+    }
+    
+    
+    public function start($canonicalUrl, TestOptions $testOptions, $testType = 'full site') {
         $httpRequest = $this->getAuthorisedHttpRequest(
             $this->getUrl('test_start', array(
             'canonical-url' => $canonicalUrl
-        )));        
+        ))); 
+        
+        $queryData = array(
+            'type' => $testType
+        );
+        
+        if ($testOptions->hasTestTypes()) {
+            $queryData['test-types'] = $testOptions->getTestTypes();
+            $testTypeKeys = $testOptions->getTestTypeKeys();
+            
+            foreach ($testTypeKeys as $testTypeKey) {
+                $testType = $testOptions->getNameFromKey($testTypeKey);                
+                
+                if (!isset($queryData['test-type-options'])) {
+                    $queryData['test-type-options'] = array();
+                }
+                
+                $queryData['test-type-options'][$testType] = $testOptions->getAbsoluteTestTypeOptions($testTypeKey, false);
+            }
+        }
+        
+        if (count($queryData)) {
+            $httpRequest->setQueryData($queryData);
+        }
+        
+        /* @var $response \webignition\WebResource\JsonDocument\JsonDocument */
+        try {
+            return $this->webResourceService->get($httpRequest);
+        } catch (\webignition\Http\Client\CurlException $curlException) {
+         
+        } catch (\SimplyTestable\WebClientBundle\Exception\WebResourceServiceException $webResourceServiceException) {
+            if ($webResourceServiceException->getCode() == 503) {
+                throw $webResourceServiceException;                    
+            }
+            
+        }
+    }
+    
+    
+    /**
+     * 
+     * @param int $limit
+     * @return \webignition\WebResource\JsonDocument\JsonDocument
+     */
+    public function getList($limit) {
+        $httpRequest = $this->getAuthorisedHttpRequest(
+            $this->getUrl('tests_list', array(
+            'limit' => $limit
+        )));
         
         /* @var $response \webignition\WebResource\JsonDocument\JsonDocument */
         try {
@@ -59,8 +147,9 @@ class TestService extends CoreApplicationService {
             
         } catch (\SimplyTestable\WebClientBundle\Exception\WebResourceServiceException $webResourceServiceException) {
             
-        }
+        }        
     }
+    
     
     /**
      *
@@ -68,8 +157,12 @@ class TestService extends CoreApplicationService {
      * @param int $testId
      * @return boolean
      */
-    public function has($canonicalUrl, $testId) {
-        return $this->get($canonicalUrl, $testId) instanceof Test;
+    public function has($canonicalUrl, $testId, User $user) {        
+        if ($this->hasEntity($testId)) {
+            return true;
+        }       
+        
+        return $this->get($canonicalUrl, $testId, $user) instanceof Test;
     }
     
     
@@ -79,22 +172,32 @@ class TestService extends CoreApplicationService {
      * @param int $testId
      * @return Test
      */
-    public function get($canonicalUrl, $testId) {        
-        if ($this->hasEntity($testId)) {
+    public function get($canonicalUrl, $testId, User $user) {
+        if ($this->hasEntity($testId)) {           
             /* @var $test Test */
-            $test = $this->fetchEntity($testId);
+            $this->currentTest = $this->fetchEntity($testId);          
             
-            if ($test->getState() != 'completed') {
-                $this->update($test);             
+            if (($this->currentTest->getState() != 'completed' && $this->currentTest->getState() != 'cancelled')) {
+                $this->update();             
+            }          
+        } else {            
+            $this->currentTest = new Test();
+            $this->currentTest->setTestId($testId);
+            $this->currentTest->setWebsite(new NormalisedUrl($canonicalUrl));            
+            
+            if (!$this->create()) {
+                return false;
             }
-        } else {
-            $test = $this->create($canonicalUrl, $testId);
+        }        
+        
+        if ($this->currentTest->getUser() != $user->getUsername() && $this->currentTest->getUser() != 'public') {
+            throw new UserServiceException(403);
         }
         
-        $this->entityManager->persist($test);
-        $this->entityManager->flush($test);        
+        $this->entityManager->persist($this->currentTest);
+        $this->entityManager->flush();
         
-        return $test;
+        return $this->currentTest;
     }
     
     
@@ -103,8 +206,8 @@ class TestService extends CoreApplicationService {
      * @param int $testId
      * @return boolean
      */
-    private function hasEntity($testId) {
-        return !is_null($this->fetchEntity($testId));
+    private function hasEntity($testId) {        
+        return $this->getEntityRepository()->hasByTestId($testId);
     }
     
     
@@ -114,105 +217,115 @@ class TestService extends CoreApplicationService {
      * @return type 
      */
     private function fetchEntity($testId) {
+//        return $this->getEntityRepository()->getById($testId);
+//        exit();
+//        
         return $this->getEntityRepository()->findOneBy(array(
             'testId' => $testId
         ));
-    }    
+    }
+    
     
     /**
      *
-     * @param Test $test
-     * @return array|false 
+     * @return boolean
      */
-    public function getUrls(Test $test) {
-        $httpRequest = $this->getAuthorisedHttpRequest(
-            $this->getUrl('test_list_urls', array(
-            'canonical-url' => (string)$test->getWebsite(),
-            'test_id' => $test->getTestId()
-        )));
+    private function create() {
+        $remoteTestSummary = $this->getRemoteTestSummary();              
+        if (!$remoteTestSummary) {
+            return false;
+        }
         
-        $testUrls = null;
+        return $this->createTestFromRemoteTestSummary();
+    }
+    
+    
+    /**
+     *
+     * @return boolean
+     */
+    private function update() {        
+        $remoteTestSummary = $this->getRemoteTestSummary();      
+        if (!$remoteTestSummary) {
+            return false;
+        }
         
-        /* @var $response \webignition\WebResource\JsonDocument\JsonDocument */
+        $this->currentTest->setState($remoteTestSummary->state);
+        $this->currentTest->setUrlCount($remoteTestSummary->url_count); 
+        
+        $this->updateTimePeriodFromJsonObject($this->currentTest->getTimePeriod(), $remoteTestSummary);
+        
+//        foreach ($jsonObject->tasks as $taskJsonObject) {
+//            $retrievedTask = $this->createTaskFromJsonObject($taskJsonObject);
+//            
+//            if ($test->hasTask($retrievedTask)) {
+//                $currentTask = $test->getTask($retrievedTask);
+//                if ($currentTask->getState() != $retrievedTask->getState()) {                    
+//                    $this->populateTaskFromJsonObject($currentTask, $taskJsonObject);
+//                    $this->entityManager->persist($currentTask);
+//                }
+//            } else {
+//                $retrievedTask->setTest($test);
+//                $test->addTask($retrievedTask);
+//                $this->entityManager->persist($retrievedTask);
+//            }
+//        }        
+    }
+    
+    
+    /**
+     *
+     * @return \stdClass|boolean 
+     */
+    public function getRemoteTestSummary() {
+        if (is_null($this->remoteTestSummary)) {
+            $remoteTestSummaryJsonDocument = $this->retrieveRemoteTestSummary();
+            if ($remoteTestSummaryJsonDocument instanceof \webignition\WebResource\JsonDocument\JsonDocument) {
+                $this->remoteTestSummary = $remoteTestSummaryJsonDocument->getContentObject();
+            } else {
+                $this->remoteTestSummary = false;
+            }
+        }
+        
+        return $this->remoteTestSummary;
+    }
+    
+    public function getLatestRemoteSummary($canonicalUrl) {
+        $retrievalUrl = $this->getUrl('test_latest', array(
+            'canonical-url' => $canonicalUrl
+        ));
+        
+        $httpRequest = $this->getAuthorisedHttpRequest($retrievalUrl);
+        
+        $testJsonDocument = null;
+        
+        /* @var $testJsonDocument \webignition\WebResource\JsonDocument\JsonDocument */
         try {
-            $testUrls = $this->webResourceService->get($httpRequest);
+            return $this->webResourceService->get($httpRequest)->getContentObject();            
         } catch (\webignition\Http\Client\CurlException $curlException) {
             
         } catch (\SimplyTestable\WebClientBundle\Exception\WebResourceServiceException $webResourceServiceException) {
             if ($webResourceServiceException->getCode() == 403) {
-                $testUrls = false;
+                $testJsonDocument = false;
             }
         }
         
-        return $testUrls;
-    }
-    
-    
-    /**
-     *
-     * @param string $canonicalUrl
-     * @param int $testId
-     * @return \SimplyTestable\WebClientBundle\Entity\Test\Test|false
-     */
-    private function create($canonicalUrl, $testId) {
-        $testJsonDocument = $this->retrieve($canonicalUrl, $testId);
-        if (!$testJsonDocument instanceof \webignition\WebResource\JsonDocument\JsonDocument) {
-            return false;
-        }
-        
-        return $this->createTestFromJsonObject($testJsonDocument->getContentObject());
-    }
-    
-    
-    /**
-     *
-     * @param Test $test
-     * @return boolean|null 
-     */
-    private function update(Test $test) {  
-        $testJsonDocument = $this->retrieve($test->getWebsite(), $test->getTestId());
-        if (!$testJsonDocument instanceof \webignition\WebResource\JsonDocument\JsonDocument) {
-            return false;
-        }     
-        
-        $jsonObject = $testJsonDocument->getContentObject();
-        
-        $test->setState($jsonObject->state);
-        $test->setUrlCount($jsonObject->url_total);
-        $this->updateTimePeriodFromJsonObject($test->getTimePeriod(), $jsonObject);
-        
-        foreach ($jsonObject->tasks as $taskJsonObject) {
-            $task = $this->createTaskFromJsonObject($taskJsonObject);     
-            
-            if ($test->hasTask($task)) {
-                $task = $test->getTask($task);
-                $task->setTest($test);
-                $this->populateTaskFromJsonObject($task, $taskJsonObject);  
-            } else {
-                $task->setTest($test);
-                $test->addTask($task);
-            }
-            
-            $this->entityManager->persist($task);
-            $this->entityManager->flush($task);
-        }
-        
+        return $testJsonDocument;         
     }
     
     
     
     /**
      *
-     * @param string $canonicalUrl
-     * @param int $testId
      * @return \webignition\WebResource\JsonDocument\JsonDocument 
      */
-    private function retrieve($canonicalUrl, $testId) {
-        $httpRequest = $this->getAuthorisedHttpRequest(
-            $this->getUrl('test_status', array(
-            'canonical-url' => $canonicalUrl,
-            'test_id' => $testId
-        )));
+    private function retrieveRemoteTestSummary() {        
+        $retrievalUrl = $this->getUrl('test_status', array(
+            'canonical-url' => $this->currentTest->getWebsite(),
+            'test_id' => $this->currentTest->getTestId()
+        ));
+        
+        $httpRequest = $this->getAuthorisedHttpRequest($retrievalUrl);
         
         $testJsonDocument = null;
         
@@ -233,32 +346,27 @@ class TestService extends CoreApplicationService {
     
     /**
      *
-     * @param \stdClass $testJsonObject
      * @return \SimplyTestable\WebClientBundle\Entity\Test\Test 
      */
-    private function createTestFromJsonObject($testJsonObject) {
-        $test = new Test();        
-        $test->setState($testJsonObject->state);                
-        $test->setUrlCount($testJsonObject->url_total);
-        $test->setUser($testJsonObject->user);
-        $test->setWebsite(new NormalisedUrl($testJsonObject->website));
-        $test->setTestId($testJsonObject->id);
-        
-        foreach ($testJsonObject->tasks as $taskJsonObject) {
-            $task = $this->createTaskFromJsonObject($taskJsonObject);
-            $task->setTest($test);                    
-            $test->addTask($task);
-        }
+    private function createTestFromRemoteTestSummary() {        
+        $remoteTestSummary = $this->getRemoteTestSummary();                
+
+        $this->currentTest->setState($remoteTestSummary->state);
+        $this->currentTest->setUser($remoteTestSummary->user);
+        $this->currentTest->setWebsite(new NormalisedUrl($remoteTestSummary->website));
+        $this->currentTest->setTestId($remoteTestSummary->id);
+        $this->currentTest->setUrlCount($remoteTestSummary->url_count);        
+        $this->currentTest->setType($remoteTestSummary->type);
         
         $taskTypes = array();
-        foreach ($testJsonObject->task_types as $taskTypeDetail) {
+        foreach ($remoteTestSummary->task_types as $taskTypeDetail) {
             $taskTypes[] = $taskTypeDetail->name;
-        }
+        }  
         
-        $test->setTaskTypes($taskTypes);
-        $this->updateTimePeriodFromJsonObject($test->getTimePeriod(), $testJsonObject);        
+        $this->currentTest->setTaskTypes($taskTypes);
+        $this->updateTimePeriodFromJsonObject($this->currentTest->getTimePeriod(), $remoteTestSummary);             
         
-        return $test;        
+        return true;
     }
     
     
@@ -331,18 +439,21 @@ class TestService extends CoreApplicationService {
             $this->webResourceService->get($httpRequest);
             return true;
         } catch (\webignition\Http\Client\CurlException $curlException) {
-            
-        } catch (\SimplyTestable\WebClientBundle\Exception\WebResourceServiceException $webResourceServiceException) {
-            if ($webResourceServiceException->getCode() == 403) {
-                return false;
-            }            
+            $this->logger->warn('TestService::cancel:curlException: ['.$curlException->getCode().'] ['.$curlException->getMessage().']');
+            return $curlException;
+        } catch (\SimplyTestable\WebClientBundle\Exception\WebResourceServiceException $webResourceServiceException) {                      
+            $this->logger->warn('TestService::cancel:WebResourceServiceException: ['.$webResourceServiceException->getCode().'] ['.$webResourceServiceException->getMessage().']');
+//            if ($webResourceServiceException->getCode() == 403) {
+//                return false;
+//            }            
+            return $webResourceServiceException->getCode();
         }        
     }
     
     
     /**
      *
-     * @return \Doctrine\ORM\EntityRepository
+     * @return \SimplyTestable\WebClientBundle\Repository\TestRepository
      */
     public function getEntityRepository() {
         if (is_null($this->entityRepository)) {
@@ -350,6 +461,7 @@ class TestService extends CoreApplicationService {
         }
         
         return $this->entityRepository;
-    }
+    }   
+    
     
 }

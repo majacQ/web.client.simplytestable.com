@@ -43,16 +43,36 @@ class Result {
      * @return array 
      */    
     public function getErrors() {
-        $errors = array();
+        return $this->getMessagesOfType(Message::TYPE_ERROR);
+    }
+    
+    
+    /**
+     * Get collection of warning messages
+     * 
+     * @return array
+     */
+    public function getWarnings() {
+        return $this->getMessagesOfType(Message::TYPE_WARNING);
+    }
+    
+    
+    private function getMessagesOfType($type) {
+        $messages = array();
 
         foreach ($this->messages as $message) {
             /* @var $message Message */
-            if ($message->getType() == Message::TYPE_ERROR) {
-                $errors[] = $message;
+            if ($message->getType() == $type) {
+                $messages[] = $message;
             }
         }
         
-        return $errors;
+        return $messages;          
+    }
+    
+    public function getFirstError() {        
+        $errors = $this->getErrors();
+        return $errors[0];
     }
     
     
@@ -66,11 +86,29 @@ class Result {
     
     
     /**
+     * 
+     * @return int
+     */
+    public function getWarningCount() {
+        return count($this->getWarnings());
+    }
+    
+    
+    /**
      *
      * @return boolean
      */
     public function hasErrors() {
         return $this->getErrorCount() > 0;
+    }
+    
+    
+    /**
+     * 
+     * @return boolean
+     */
+    public function hasWarnings() {
+        return $this->getWarningCount() > 0;
     }
     
     
@@ -84,6 +122,106 @@ class Result {
         }
         
         return self::OUTCOME_PASSED;
+    }
+    
+    
+    /**
+     * 
+     * @return boolean
+     */
+    public function isHtmlInvalidDocumentTypeFailure() {
+        return $this->isOfErrorClass('/document-type-invalid/');         
+    }
+    
+    
+    /**
+     *
+     * @return boolean 
+     */
+    public function isHttpRedirectLoopFailure() {
+        return $this->isOfErrorClass('/http-retrieval-redirect-loop/');        
+    } 
+    
+    
+    /**
+     *
+     * @return boolean 
+     */
+    public function isHttpRedirectLimitFailure() {
+        return $this->isOfErrorClass('/http-retrieval-redirect-limit-reached/');       
+    }     
+    
+    
+    /**
+     *
+     * @return boolean 
+     */
+    public function isCharacterEncodingFailure() {
+        return $this->isOfErrorClass('/character-encoding/');
+    }  
+    
+    /**
+     * 
+     * @return boolean
+     */
+    public function isCurlTimeoutFailure() {
+        return $this->isOfErrorClass('/http-retrieval-curl-code-28/');      
+    }
+    
+    /**
+     * 
+     * @return boolean
+     */
+    public function isCurlDnsResolutionFailulre() {
+        return $this->isOfErrorClass('/http-retrieval-curl-code-6/');      
+    }
+    
+    /**
+     * 
+     * @return boolean
+     */
+    public function isCurlUrlFormatFailure() {
+        return $this->isOfErrorClass('/http-retrieval-curl-code-3/');      
+    }  
+    
+    
+    /**
+     * 
+     * @return boolean
+     */
+    public function isHttpClientErrorFailure() {
+        return $this->isOfErrorClass('/http-retrieval-4\d\d/');
+    }
+    
+    
+    /**
+     * 
+     * @return boolean
+     */
+    public function isCssValidationUnknownExceptionError() {        
+        $errors = $this->getErrors();
+        if (count($errors) === 0) {
+            return false;
+        }        
+        
+        return $errors[0]->getMessage() == 'Unknown error';
+    }
+    
+    
+    
+    /**
+     * 
+     * @param string $errorClassPattern
+     * @return boolean
+     */
+    private function isOfErrorClass($errorClassPattern) {
+        foreach ($this->getErrors() as $error) {            
+            if (preg_match($errorClassPattern, $error->getClass()) > 0) {
+                return true;
+            }
+        }
+        
+        return false;          
     }
         
     
