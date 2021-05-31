@@ -1,28 +1,44 @@
+services:
+  - redis-server
+
 language: php
 php:
-  - 5.3
-  - 5.4
-  
-before_script:    
-  # Installing pecl_http module
-  - printf "\n\n\n\n" | pecl -q install pecl_http
-  - echo "extension=http.so" >> `php --ini | grep "Loaded Configuration" | sed -e "s|.*:\s*||"`    
-  
-  # Install composer for dependency management
-  - wget http://getcomposer.org/composer.phar   
-  
-  # Set the GitHub OAuth token to make use of the 6000 per hour rate limit
+  - 7.2
+
+env:
+  global:
+    - APP_ENV=test
+    - DATABASE_URL=mysql://root:@127.0.0.1:3306/myapp_test
+    - APP_SECRET=Secret!
+    - SESSION_SAVE_PATH=/tmp
+    - MARKETING_SITE=https://simplytestable.com/
+    - STRIPE_KEY=stripe_key_value
+    - CORE_URL=http://null
+    - MAILCHIMP_API_KEY=mailchimp_api_key_value-us5
+    - ADMIN_USER_USERNAME=admin
+    - ADMIN_USER_PASSWORD=admin_password_value
+    - POSTMARK_API_KEY=postmark_api_key_value
+    - RESQUE_PREFIX=web.client.simplytestable.com
+
+cache:
+  directories:
+    - $HOME/.composer/cache/files
+    - $HOME/.cache/yarn
+
+before_install:
   - "mkdir -p ~/.composer"
-  - cp .travis.composer.config.json ~/.composer/config.json   
-  
-  # Build!
-  #- mkdir app/cache/test  
-  - mv app/config/parameters.yml.travis app/config/parameters.yml
-  - mv --force app/config/config_travis.yml app/config/config_test.yml
-  - cp src/SimplyTestable/WebClientBundle/Resources/config/parameters.yml.travis src/SimplyTestable/WebClientBundle/Resources/config/parameters.yml
-  - php composer.phar install
-  - php app/console doctrine:database:create
-  - php app/console doctrine:migrations:migrate --no-interaction
-  
+  - cp .travis.composer.config.json ~/.composer/config.json
+  - mysql -e 'CREATE DATABASE myapp_test;'
+  - chmod +x ./bin/console
+  - yarn install
+
+install:
+  - composer install --prefer-dist
+  - php bin/console doctrine:migrations:migrate --no-interaction
+
+before_script:
+  - php bin/console --env=test cache:clear --no-warmup
+  - php bin/console --env=test cache:warmup
+
 script:
-  - phpunit -c app
+  - yarn run stylelint && yarn run eslint && yarn run encore production && composer cs && composer test
