@@ -62,6 +62,18 @@ app_task_results:
         test_id: "\d+"
         task_id: "\d+" 
         
+app_queued:
+  pattern: /{website}/queued/
+  defaults: { _controller: SimplyTestableWebClientBundle:App:queued } 
+  requirements:
+      website: ".+" 
+      
+test_queued_status:
+  pattern: /{website}/queued/status/
+  defaults: { _controller: SimplyTestableWebClientBundle:Test:queuedStatus, _format: json  } 
+  requirements:
+      website: ".+"       
+        
 app_task_results_redirector:
     pattern:  /{website}/{test_id}/{task_id}/
     defaults: { _controller: SimplyTestableWebClientBundle:Redirect:task }  
@@ -127,6 +139,12 @@ test_cancel:
     defaults: { _controller: SimplyTestableWebClientBundle:Test:cancel }  
     requirements:
         website: ".+"
+        
+test_cancel_queued:
+    pattern:  /test/{website}/cancel/
+    defaults: { _controller: SimplyTestableWebClientBundle:Test:cancelQueued }  
+    requirements:
+        website: ".+"        
         
 app_test_redirector:
     pattern:  /{website}/{test_id}/

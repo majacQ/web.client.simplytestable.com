@@ -129,6 +129,55 @@ application.results.preparingController = function () {
 };
 
 application.progress = {};
+
+application.progress.queuedTestController = function () {
+    
+    var checkState = function () {
+        var now = new Date();
+        
+        var getStatusUrl = function () {            
+            return window.location.href + 'status/?timestamp=' + now.getTime();            
+        };
+        
+        var getNotQueuedRedirectUrl = function () {
+            return window.location.href.replace('/queued/', '/'); 
+        };
+        
+        jQuery.ajax({
+            complete:function (request, textStatus) {
+                //console.log('complete', request, textStatus);
+            },
+            dataType:'json',
+            error:function (request, textStatus, errorThrown) {
+                console.log('error', request, textStatus, request.getAllResponseHeaders());
+            },
+            statusCode: {
+                403: function () {
+                    console.log('403');
+                },
+                500: function () {
+                    console.log('500');
+                }
+            },
+            success: function (data, textStatus, request) {                
+                if (data === 'not queued') {
+                    window.location.href = getNotQueuedRedirectUrl();
+                    return;                    
+                }
+                
+                window.setTimeout(function () {
+                    checkState();
+                }, 3000);
+            },
+            url:getStatusUrl()
+        });
+    };
+    
+    this.initialise = function () {
+        checkState();
+    };
+};
+
 application.progress.testController = function () {    
     var latestTestData = {};
     
@@ -815,7 +864,7 @@ application.progress.taskController = function () {
         callback();
     };
     
-    var initialise = function () {        
+    var initialise = function () {         
         taskOutputController = new application.progress.taskOutputController();
         
         if (getUrlCount() === 0 || getTaskCount() === 0 || getTaskIds() === null) {
@@ -1262,7 +1311,18 @@ application.progress.taskOutputController = function () {
 application.pages = {
     '/*':{
         'initialise':function () {
-            if ($('body.app-progress').length > 0) {                
+            if ($('body.app-queued').length > 0) {                
+                queuedTestController = new application.progress.queuedTestController();
+                queuedTestController.initialise();
+                
+//                testProgressController = new application.progress.testController();
+//                testProgressController.initialise();
+//                
+//                taskProgressController = new application.progress.taskController();
+//                taskProgressController.initialise();
+            }
+            
+            if ($('body.app-progress').length > 0 && $('body.app-queued').length === 0) {                
                 testProgressController = new application.progress.testController();
                 testProgressController.initialise();
                 

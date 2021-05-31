@@ -1,6 +1,14 @@
 {% extends 'SimplyTestableWebClientBundle::App/base.html.twig' %}
 
-{% block title %}Testing {{website}} (#{{test.testId}}) - {{ parent() }}{% endblock %}
+{% block title %}
+{% if test is defined %}
+Testing {{website}} (#{{test.testId}}) - {{ parent() }}
+{% else %}
+Testing {{website}} - {{ parent() }}
+{% endif %}
+{% endblock %}
+
+
 
 {% block javascripts %}
 {{ parent() }}
@@ -12,6 +20,26 @@
 {% block main %}         
 <div class="row-fluid">
     <div class="span12">
+        {% if app.request.attributes.get('_route') == 'app_progress' and test_cancel_error is defined and test_cancel_error != '' %}           
+            {% if test_cancel_error == 503 %}
+        <div class="alert alert-error">   
+            Oops. We're in a <strong>read-only</strong> state whilst some 
+            <strong>maintenance</strong> is going on. You can cancel
+            this test right now.
+        </div> 
+            {% endif %}        
+        {% endif %}        
+        
+        {% if app.request.attributes.get('_route') == 'app_queued' %}           
+            {% if reason == 503 %}
+        <div class="alert alert-info">       
+            We're in a <strong>read-only</strong> state whilst some 
+            <strong>maintenance</strong> is going on. Your test has been queued 
+            and will be started before too long.
+        </div> 
+            {% endif %}        
+        {% endif %}
+        
                 {% include 'SimplyTestableWebClientBundle:Partials:test-input.html.twig' %} 
         </div>
     </div>

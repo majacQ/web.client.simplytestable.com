@@ -82,12 +82,35 @@ class UserService extends CoreApplicationService {
      * @param \SimplyTestable\WebClientBundle\Model\User $user
      * @return boolean
      */
+    public function isSpecialUser(User $user) {
+        return $this->isPublicUser($user) || $this->isAdminUser($user);
+    }
+    
+    
+    /**
+     * 
+     * @param \SimplyTestable\WebClientBundle\Model\User $user
+     * @return boolean
+     */
     public function isPublicUser(User $user) {
         $comparatorUser = new User();
         $comparatorUser->setUsername(strtolower($user->getUsername()));
         
         return $this->getPublicUser()->equals($comparatorUser);
     } 
+    
+    
+    /**
+     * 
+     * @param \SimplyTestable\WebClientBundle\Model\User $user
+     * @return boolean
+     */
+    public function isAdminUser(User $user) {
+        $comparatorUser = new User();
+        $comparatorUser->setUsername(strtolower($user->getUsername()));
+        
+        return $this->getAdminUser()->equals($comparatorUser);
+    }
     
     
     
@@ -105,13 +128,10 @@ class UserService extends CoreApplicationService {
         ));
         
         try {
-            $response = $this->getHttpClient()->getResponse($request);
-            
-            return $response->getResponseCode() == 200;
+            $response = $this->getHttpClient()->getResponse($request);            
+            return ($response->getResponseCode() == 200) ? true : $response->getResponseCode();
         } catch (\webignition\Http\Client\CurlException $curlException) {     
-            return null;
-        } catch (\SimplyTestable\WebClientBundle\Exception\WebResourceServiceException $webResourceServiceException) {
-            return null;
+            return $curlException->getCode();
         }
     }
     
@@ -148,44 +168,38 @@ class UserService extends CoreApplicationService {
         
         try {
             $response = $this->getHttpClient()->getResponse($request);
-            
-            if ($response->getResponseCode() == $userExistsResponseCode) {
-                return false;
-            }
-            
-            return true;
+            return $response->getResponseCode() == 200 ? true : $response->getResponseCode();
         } catch (\webignition\Http\Client\CurlException $curlException) {     
+            return $curlException->getCode();
             return null;
-        } catch (\SimplyTestable\WebClientBundle\Exception\WebResourceServiceException $webResourceServiceException) {
-            return null;
-        }       
+        }     
     }
     
     
-    public function activate($token) {
-        $currentUser = ($this->hasUser()) ? $this->getUser() : null;
-   
+    public function activate($token) {   
         $this->setUser($this->getAdminUser());
         
         $request = $this->getAuthorisedHttpRequest($this->getUrl('user_activate', array(
             'token' => $token
         )), HTTP_METH_POST);
         
-        $response = $this->getHttpClient()->getResponse($request);
-        
-        if (!is_null($currentUser)) {
-            $this->setUser($currentUser);
-        }        
-        
-        if ($response->getResponseCode() == 401) {
-            throw new CoreApplicationAdminRequestException('Invalid admin user credentials', 401);
-        }        
-        
-        if ($response->getResponseCode() == 400) {
-            return false;
-        }
+        try {
+            $response = $this->getHttpClient()->getResponse($request);
+            $this->setUser($this->getPublicUser());  
+            
+            if ($response->getResponseCode() == 401) {
+                throw new CoreApplicationAdminRequestException('Invalid admin user credentials', 401);
+            }        
 
-        return true;      
+            if ($response->getResponseCode() == 400) {
+                return false;
+            }            
+            
+            return $response->getResponseCode() == 200 ? true : $response->getResponseCode();
+        } catch (\webignition\Http\Client\CurlException $curlException) {     
+            $this->setUser($this->getPublicUser());  
+            return $curlException->getCode();
+        }     
     }    
     
     
@@ -194,24 +208,32 @@ class UserService extends CoreApplicationService {
      * @return boolean
      * @throws CoreApplicationAdminRequestException
      */
-    public function exists() {
-        /* @var $currentUser User */
-        $currentUser = ($this->hasUser()) ? $this->getUser() : null;
+    public function exists($email = null) {        
+        /* @var $currentUser User */        
+        $currentUser = ($this->hasUser()) ? $this->getUser() : null;        
         if (is_null($currentUser)) {
             return false;
         }
+        
+        if ($this->isSpecialUser($currentUser)) {
+            $currentUser = null;
+        }
+        
+        $userEmail = (is_null($currentUser)) ? $email : $currentUser->getUsername();      
    
         $this->setUser($this->getAdminUser());
         
         $request = $this->getAuthorisedHttpRequest($this->getUrl('user_exists', array(
-            'email' => $currentUser->getUsername()
+            'email' => $userEmail
         )), HTTP_METH_POST);
         
         $response = $this->getHttpClient()->getResponse($request);
         
-        if (!is_null($currentUser)) {
-            $this->setUser($currentUser);
-        }        
+        if (is_null($currentUser)) {
+            $currentUser = $this->getPublicUser();
+        }    
+        
+        $this->setUser($currentUser);    
         
         if ($response->getResponseCode() == 401) {
             throw new CoreApplicationAdminRequestException('Invalid admin user credentials', 401);

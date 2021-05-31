@@ -303,7 +303,8 @@ class UserController extends BaseViewController
             'is_logged_in' => !$this->getUserService()->isPublicUser($this->getUser()),
             'email' => $email,
             'token' => $token,
-            'user_reset_password_error' => $userResetPasswordError
+            'user_reset_password_error' => $userResetPasswordError,
+            'stay_signed_in' => $this->getPersistentValue('stay-signed-in')
             //'user_reset_password_confirmation' => $userResetPasswordConfirmation
 
         )), $cacheValidatorHeaders);        
@@ -341,6 +342,7 @@ class UserController extends BaseViewController
     public function resetPasswordChooseSubmitAction() {
         $email = trim($this->get('request')->request->get('email'));        
         $inputToken = trim($this->get('request')->request->get('token'));
+        $staySignedIn = trim($this->get('request')->request->get('stay-signed-in')) == '' ? 0 : 1; 
 
         if (!$this->isEmailValid($email) || $inputToken == '' || $this->getUserService()->exists($email) === false) {
             return $this->redirect($this->generateUrl('reset_password', array(), true));             
@@ -352,7 +354,8 @@ class UserController extends BaseViewController
             $this->get('session')->setFlash('user_reset_password_error', 'invalid-token');
             return $this->redirect($this->generateUrl('reset_password_choose', array(
                 'email' => $email,
-                'token' => $inputToken
+                'token' => $inputToken,
+                'stay-signed-in' => $staySignedIn
             ), true));            
         }
         
@@ -362,17 +365,28 @@ class UserController extends BaseViewController
             $this->get('session')->setFlash('user_reset_password_error', 'blank-password');
             return $this->redirect($this->generateUrl('reset_password_choose', array(
                 'email' => $email,
-                'token' => $inputToken
+                'token' => $inputToken,
+                'stay-signed-in' => $staySignedIn
             ), true));               
         }
         
         $passwordResetResponse = $this->getUserService()->resetPassword($token, $password);
+        
+        if ($this->requestFailedDueToReadOnly($passwordResetResponse)) {
+            $this->get('session')->setFlash('user_reset_password_error', 'failed-read-only');
+            return $this->redirect($this->generateUrl('reset_password_choose', array(
+                'email' => $email,
+                'token' => $inputToken,
+                'stay-signed-in' => $staySignedIn
+            ), true));             
+        }
             
         if (is_null($passwordResetResponse)) {
             $this->get('session')->setFlash('user_reset_password_error', 'unknown-error');
             return $this->redirect($this->generateUrl('reset_password_choose', array(
                 'email' => $email,
-                'token' => $inputToken
+                'token' => $inputToken,
+                'stay-signed-in' => $staySignedIn
             ), true));            
         }
         
@@ -380,20 +394,37 @@ class UserController extends BaseViewController
             $this->get('session')->setFlash('user_reset_password_error', 'invalid-token');
             return $this->redirect($this->generateUrl('reset_password_choose', array(
                 'email' => $email,
-                'token' => $inputToken
+                'token' => $inputToken,
+                'stay-signed-in' => $staySignedIn
             ), true));            
         }
         
         $user = new User();
         $user->setUsername($email);
         $user->setPassword($password);
-        
         $this->getUserService()->setUser($user);
         
-        return $this->redirect($this->generateUrl('app', array(), true));
+        $response = $this->redirect($this->generateUrl('app', array(), true));
+        
+        if ($staySignedIn == "1") {
+            $stringifiedUser = $this->getUserSerializerService()->serializeToString($user);
+            
+            $cookie = new Cookie(
+                'simplytestable-user',
+                $stringifiedUser,
+                time() + self::ONE_YEAR_IN_SECONDS,
+                '/',
+                '.simplytestable.com',
+                false,
+                true
+            );
+            
+            $response->headers->setCookie($cookie);
+        }        
+        
+        return $response;        
     }     
     
-
     public function signUpAction()
     {        
         if ($this->isUsingOldIE()) {
@@ -461,15 +492,20 @@ class UserController extends BaseViewController
         
         $this->getUserService()->setUser($this->getUserService()->getPublicUser());
         $createResponse = $this->getUserService()->create($email, $password);        
-                
-        if ($this->userCreationFailed($createResponse)) {
-            $this->get('session')->setFlash('user_create_error', 'create-failed');
-            return $this->redirect($this->generateUrl('sign_up', array('email' => $email), true));               
-        }
         
         if ($this->userCreationUserAlreadyExists($createResponse)) {
             $this->get('session')->setFlash('user_create_confirmation', 'user-exists');
             return $this->redirect($this->generateUrl('sign_up', array('email' => $email), true));             
+        }
+        
+        if ($this->requestFailedDueToReadOnly($createResponse)) {
+            $this->get('session')->setFlash('user_create_error', 'create-failed-read-only');
+            return $this->redirect($this->generateUrl('sign_up', array('email' => $email), true));               
+        }        
+                
+        if ($this->userCreationFailed($createResponse)) {
+            $this->get('session')->setFlash('user_create_error', 'create-failed');
+            return $this->redirect($this->generateUrl('sign_up', array('email' => $email), true));               
         }
         
         $token = $this->getUserService()->getConfirmationToken($email);        
@@ -559,11 +595,11 @@ class UserController extends BaseViewController
     
     
     public function signupConfirmSubmitAction($email) {
-        $user = new User();
-        $user->setUsername($email);
-        $this->getUserService()->setUser($user);
+//        $user = new User();
+//        $user->setUsername($email);
+//        $this->getUserService()->setUser($user);
         
-        if ($this->getUserService()->exists() === false) {
+        if ($this->getUserService()->exists($email) === false) {
             $this->get('session')->setFlash('token_resend_error', 'invalid-user');
             return $this->redirect($this->generateUrl('sign_up_confirm', array('email' => $email), true));          
         }
@@ -574,7 +610,11 @@ class UserController extends BaseViewController
             return $this->redirect($this->generateUrl('sign_up_confirm', array('email' => $email), true));            
         }
         
-        $activationResponse = $this->getUserService()->activate($token);
+        $activationResponse = $this->getUserService()->activate($token);        
+        if ($this->requestFailedDueToReadOnly($activationResponse)) {
+            $this->get('session')->setFlash('user_token_error', 'failed-read-only');
+            return $this->redirect($this->generateUrl('sign_up_confirm', array('email' => $email), true));                
+        }
         
         if ($activationResponse == false) {
             $this->get('session')->setFlash('user_token_error', 'invalid-token');
@@ -584,6 +624,15 @@ class UserController extends BaseViewController
         $this->get('session')->setFlash('user_signin_confirmation', 'user-activated');
         return $this->redirect($this->generateUrl('sign_in', array('email' => $email), true));  
     }    
+
+    /**
+     * 
+     * @param mixed $createResponse
+     * @return boolean
+     */
+    private function requestFailedDueToReadOnly($responseCode) {
+        return $responseCode === 503;
+    }    
     
     
     /**
@@ -592,7 +641,7 @@ class UserController extends BaseViewController
      * @return boolean
      */
     private function userCreationFailed($createResponse) {
-        return is_null($createResponse);
+        return $createResponse !== true;
     }
     
     
@@ -602,7 +651,7 @@ class UserController extends BaseViewController
      * @return boolean
      */
     private function userCreationUserAlreadyExists($createResponse) {
-        return $createResponse === false;
+        return $createResponse === 302;
     }  
     
     
