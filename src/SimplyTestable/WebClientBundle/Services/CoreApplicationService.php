@@ -1,14 +1,23 @@
 <?php
 namespace SimplyTestable\WebClientBundle\Services;
 
+use SimplyTestable\WebClientBundle\Model\User;
 
-class CoreApplicationService {    
+
+abstract class CoreApplicationService {    
+    
+    /**
+     *
+     * @var \SimplyTestable\WebClientBundle\Model\User;
+     */
+    private static $user;
+    
     
     /**
      *
      * @var \SimplyTestable\WebClientBundle\Services\WebResourceService 
      */
-    private $webResourceService;
+    protected $webResourceService;
     
     
     /**
@@ -17,155 +26,49 @@ class CoreApplicationService {
      */
     private $parameters;
     
-    /**
-     * Collection of test statuses retrieved from core application
-     *  
-     * @var array
-     */
-    private $testStatus = array();
-    
     
     public function __construct(
         $parameters,
         \SimplyTestable\WebClientBundle\Services\WebResourceService $webResourceService
     ) {
         $this->parameters = $parameters;
-        $this->webResourceService = $webResourceService;        
-    }
+        $this->webResourceService = $webResourceService;
+    } 
     
-    
-    public function testStart($canonicalUrl) {
-        $httpRequest = $this->getAuthorisedHttpRequest(
-            $this->getUrl('test_start', array(
-            'canonical-url' => $canonicalUrl
-        )));
-        
-        /* @var $response \webignition\WebResource\JsonDocument\JsonDocument */
-        try {
-            return $this->webResourceService->get($httpRequest);
-        } catch (\webignition\Http\Client\CurlException $curlException) {
-            
-        } catch (\SimplyTestable\WebClientBundle\Exception\WebResourceServiceException $webResourceServiceException) {
-            
-        }
-    }
     
     /**
-     *
-     * @param string $canonicalUrl
-     * @param string $testId
+     * 
+     * @param \SimplyTestable\WebClientBundle\Model\User $user
+     */
+    public function setUser(User $user) {
+        self::$user = $user;
+    }
+    
+    
+    /**
+     * 
+     * @return \SimplyTestable\WebClientBundle\Model\User
+     */
+    public function getUser() {
+        return self::$user;
+    }
+    
+    
+    /**
+     * 
      * @return boolean
      */
-    public function hasTestStatus($canonicalUrl, $testId) {
-        return $this->getTestStatus($canonicalUrl, $testId) instanceof \webignition\WebResource\JsonDocument\JsonDocument;
+    public function hasUser() {
+        return !is_null($this->getUser());
     }
     
     
-    /**
-     *
-     * @param string $canonicalUrl
-     * @param string $testId
-     * @return \webignition\WebResource\JsonDocument\JsonDocument|false|null 
-     */
-    public function getTestStatus($canonicalUrl, $testId) {
-        if (!isset($this->testStatus[$canonicalUrl])) {
-            $this->retrieveTestStatus($canonicalUrl, $testId);
+    protected function getUrl($name = null, $parameters = null) {
+        $url = $this->parameters['urls']['base'];
+        
+        if (!is_null($name)) {
+            $url .= $this->parameters['urls'][$name];
         }
-        
-        if (!isset($this->testStatus[$canonicalUrl][$testId])) {
-            $this->retrieveTestStatus($canonicalUrl, $testId);
-        }        
-        
-        return $this->testStatus[$canonicalUrl][$testId];
-    }
-    
-    
-    public function getTestUrls($canonicalUrl, $testId) {
-        $httpRequest = $this->getAuthorisedHttpRequest(
-            $this->getUrl('test_list_urls', array(
-            'canonical-url' => $canonicalUrl,
-            'test_id' => $testId
-        )));
-        
-        $testUrls = null;
-        
-        /* @var $response \webignition\WebResource\JsonDocument\JsonDocument */
-        try {
-            $testUrls = $this->webResourceService->get($httpRequest);
-        } catch (\webignition\Http\Client\CurlException $curlException) {
-            
-        } catch (\SimplyTestable\WebClientBundle\Exception\WebResourceServiceException $webResourceServiceException) {
-            if ($webResourceServiceException->getCode() == 403) {
-                $testUrls = false;
-            }
-        }
-        
-        return $testUrls;
-    }
-    
-    
-    private function retrieveTestStatus($canonicalUrl, $testId) {
-        if (!isset($this->testStatus[$canonicalUrl])) {
-            $this->testStatus[$canonicalUrl] = array();
-        }
-        
-        if (isset($this->testStatus[$canonicalUrl][$testId])) {
-            return;
-        }        
-        
-        $httpRequest = $this->getAuthorisedHttpRequest(
-            $this->getUrl('test_status', array(
-            'canonical-url' => $canonicalUrl,
-            'test_id' => $testId
-        )));
-        
-        $testStatus = null;
-        
-        /* @var $response \webignition\WebResource\JsonDocument\JsonDocument */
-        try {
-            $testStatus =  $this->webResourceService->get($httpRequest);
-        } catch (\webignition\Http\Client\CurlException $curlException) {
-            
-        } catch (\SimplyTestable\WebClientBundle\Exception\WebResourceServiceException $webResourceServiceException) {
-            if ($webResourceServiceException->getCode() == 403) {
-                $testStatus = false;
-            }
-        }
-        
-        $this->testStatus[$canonicalUrl][$testId] = $testStatus;        
-    }   
-    
-    
-    
-    /**
-     *
-     * @param string $canonicalUrl
-     * @param int $testId
-     * @return boolean 
-     */
-    public function testCancel($canonicalUrl, $testId) {
-        $httpRequest = $this->getAuthorisedHttpRequest(
-            $this->getUrl('test_cancel', array(
-            'canonical-url' => $canonicalUrl,
-            'test_id' => $testId
-        )));
-        
-        /* @var $response \webignition\WebResource\JsonDocument\JsonDocument */
-        try {
-            $this->webResourceService->get($httpRequest);
-            return true;
-        } catch (\webignition\Http\Client\CurlException $curlException) {
-            
-        } catch (\SimplyTestable\WebClientBundle\Exception\WebResourceServiceException $webResourceServiceException) {
-            if ($webResourceServiceException->getCode() == 403) {
-                return false;
-            }            
-        }        
-    }    
-    
-    
-    private function getUrl($name, $parameters) {
-        $url =  $this->parameters['urls']['base'] . $this->parameters['urls'][$name];
         
         if (is_array($parameters)) {
             foreach ($parameters as $parameterName => $parameterValue) {
@@ -177,13 +80,12 @@ class CoreApplicationService {
     }
     
     
-    private function getAuthorisedHttpRequest($url = '', $request_method = HTTP_METH_GET, $options = array()) {
-        $httpRequest = new \HttpRequest($url, $request_method, $options);
-        $httpRequest->addHeaders(array(
-            'Authorization' => 'Basic ' . base64_encode('public:public')
+    protected function addAuthorisationToRequest(\Guzzle\Http\Message\Request $request) {
+        $request->addHeaders(array(
+            'Authorization' => 'Basic ' . base64_encode($this->getUser()->getUsername().':'.$this->getUser()->getPassword())
         ));
         
-        return $httpRequest;
+        return $request;                
     }
     
 }

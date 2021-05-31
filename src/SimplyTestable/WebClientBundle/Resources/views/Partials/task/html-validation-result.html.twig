@@ -1,0 +1,21 @@
+<div class="html-validation-result">
+    <div class="meta">     
+        <p>
+            {% if error.getLineNumber > -1 and error.getColumnNumber == -1 %}
+                Line {{ error.getLineNumber }}:
+            {% endif %}              
+
+            {% if error.getLineNumber == -1 and error.getColumnNumber > -1 %}
+                Column {{ error.getColumnNumber }}:
+            {% endif %}            
+
+            {% if error.getLineNumber > -1 and error.getColumnNumber > -1 %}
+                Line {{ error.getLineNumber }}, Column {{ error.getColumnNumber }}:
+            {% endif %} 
+        </p>
+    </div>
+    <div class="content">
+        <span class="message">{{ error }}</span>        
+    </div>
+    <div class="clearfix"></div>
+</div>

@@ -1,78 +1,89 @@
 {% extends 'SimplyTestableWebClientBundle::App/base.html.twig' %}
 
-{% block title %}Testing {{test.website}} (#{{test.id}}) - {{ parent() }}{% endblock %}
+{% block title %}
+{% if test is defined %}
+Testing {{website}} (#{{test.testId}}) - {{ parent() }}
+{% else %}
+Testing {{website}} - {{ parent() }}
+{% endif %}
+{% endblock %}
+
+
+
+{% block javascripts %}
+{{ parent() }}
+<script type="text/javascript" src="/bundles/simplytestablewebclient/js/punycode.min.js"></script>
+<script type="text/javascript" src="/bundles/simplytestablewebclient/js/moment.min.js"></script>
+{% endblock %} 
+
+{% block body_class %}{{ parent() }} app-progress {% endblock %}
 
 {% block main %}         
-    {% include 'SimplyTestableWebClientBundle:Partials:test-input.html.twig' %}
-<div id="progress">
-    {% if url_total > 0 %}
-    <section id="completion-percent">    
-        <h2 class="info"><i class="icon-info-sign"></i>
-            {% if test.state == 'queued' %}
-                Queued, waiting to start
-            {% elseif test.state == 'preparing' or test.state == 'in-progress' %}
-                Running now, {{ completion_percent }}% done
-            {% endif %}
-                
-            <div class="progress progress-striped active">
-                <div class="bar" style="width:{{ completion_percent }}%;"></div>
-            </div>                
-        </h2>
-    </section>
+<div class="row-fluid">
+    <div class="span12">
+        {% if app.request.attributes.get('_route') == 'app_progress' and test_cancel_error is defined and test_cancel_error != '' %}           
+            {% if test_cancel_error == 503 %}
+        <div class="alert alert-error">   
+            Oops. We're in a <strong>read-only</strong> state whilst some 
+            <strong>maintenance</strong> is going on. You can cancel
+            this test right now.
+        </div> 
+            {% endif %}        
+        {% endif %}        
         
-    <section id="url_list">
-        <h2 class="info"><i class="icon-info-sign"></i> Tests ({{ url_total }} urls, {{ task_total}} tests)</h2>
+        {% if app.request.attributes.get('_route') == 'app_queued' %}           
+            {% if reason == 503 %}
+        <div class="alert alert-info">       
+            We're in a <strong>read-only</strong> state whilst some 
+            <strong>maintenance</strong> is going on. Your test has been queued 
+            and will be started before too long.
+        </div> 
+            {% endif %}        
+        {% endif %}
+            
+        {% if remote_test_summary.ammendments is defined %}
+            {% if remote_test_summary.ammendments[0].constraint is defined %}
+                {% include 'SimplyTestableWebClientBundle:Partials:free-demo-url-limit.html.twig' %}
+            {% endif %}         
+        {% endif %}
         
-        <table class="test-states">
-            <tbody>
-                <tr class="queued">
-                    <th><span class="label label-warning">Queued</span></th>
-                    <td class="bar"><span class="label label-warning" style="width:{% if task_state_total.queued == 0 %} 1{% else %} {{ (task_state_total.queued / task_total) * 100}}{% endif %}%;">{{ task_state_total.queued }}</span></td>
-                </tr>
-                <tr class="in-progress">
-                    <th><span class="label label-info">In Progress</span></th>
-                    <td class="bar"><span class="label label-info" style="width:{% if task_state_total.in_progress == 0 %} 1{% else %} {{ (task_state_total.in_progress / task_total) * 100}}{% endif %}%;">{{ task_state_total.in_progress }}</span></td>
-                </tr>
-                <tr class="completed">                
-                    <th><span class="label label-success">Completed</span></th>
-                    <td class="bar"><span class="label label-success" style="width:{% if task_state_total.completed == 0 %} 1{% else %} {{ (task_state_total.completed / task_total) * 100}}{% endif %}%;">{{ task_state_total.completed }}</span></td>
-                </tr>            
-            </tbody>
-        </table>
-        
-        <ul class="urls">
-        {% for url in urls %}             
-            <li class="url">               
-                <span class="url">{{ url }}</span>
-                <span class="tasks">
-                    <ul class="tasks">
-                    {% for task in test.tasks %}
-                        {% if task.url == url %}
-                            <li class="task {{task.state}}">
-                                <span class="state">
-                                    {% if task.state == 'queued' %}
-                                        <i class="icon-cog"></i>
-                                    {% elseif task.state == 'in-progress' %}
-                                        <i class="icon-cogs"></i>
-                                    {% else %}
-                                        <i class="icon-bar-chart"></i>
-                                    {% endif %}
-                                </span>                                
-                                <span class="type">{{ task.type}}</span>
-                            </li>                            
-                        {% endif %}
-                    {% endfor %} 
-                    </ul>
-                </span>                    
-            </li>
-        {% endfor %}              
-        </ul>      
-    </section>
-    {% endif %}
-</div>
+                {% include 'SimplyTestableWebClientBundle:Partials:test-input.html.twig' %}
+        </div>
+    </div>
+
+
+    <section>
+        <div class="row-fluid">
+            <div class="span12">
+                    {% include 'SimplyTestableWebClientBundle:Partials/progress:completion-percent.html.twig' %}
+                </div>                
+            </div>          
+        </section>
+
+
+        <div class="row-fluid">
+            <section>                
+                <div class="span12" id="test-summary">
+                    <h2 class="info"><i class="icon-certificate"></i> Summary (<span id="test-summary-url-count">{{ remote_test_summary.url_count }}</span> urls, <span id="test-summary-task-count">{{ remote_test_summary.task_count }}</span> tests)</h2>
+                    {% include 'SimplyTestableWebClientBundle:Partials:progress/task-states.html.twig' %}
+                </div>
+                <div class="clearfix"></div>
+            </section>
+        </div>
+
+
+        <div id="test-list">
+            <div class="row-fluid">
+                <div class="span12">
+                    <section id="task-list-container">
+                        <h2 class="info"><i class="icon-tasks"></i> Progress</h2>
+                    </section>  
+                </div>
+            </div>            
+        </div>
+
 
 {% endblock %}
 
 {% block latest %}
-
 {% endblock %}
