@@ -61,6 +61,13 @@ class TaskService extends CoreApplicationService {
     private $taskOutputService;   
     
     
+    /**
+     *
+     * @var \SimplyTestable\WebClientBundle\Repository\TaskOutputRepository
+     */
+    private $taskOutputRepository;    
+    
+    
     public function __construct(
         EntityManager $entityManager,
         $parameters,
@@ -92,7 +99,7 @@ class TaskService extends CoreApplicationService {
      * @param array $remoteTaskIds
      * @return array 
      */
-    public function getCollection(Test $test, $remoteTaskIds = null) {              
+    public function getCollection(Test $test, $remoteTaskIds = null) {                      
         if (!is_array($remoteTaskIds)) {
             $remoteTaskIds = $this->getRemoteTaskIds($test);
         }       
@@ -111,7 +118,7 @@ class TaskService extends CoreApplicationService {
         
         $tasksToPersist = array();
         $tasks = array();
-        $previousTaskStates = array();
+        $previousTaskStates = array();     
         
         if (count($localTasksToUpdate)) {            
             $tasks = $this->getEntityRepository()->getCollectionByTestAndRemoteId($test, $remoteTaskIds);
@@ -125,7 +132,7 @@ class TaskService extends CoreApplicationService {
         }       
         
         if (count($tasksToRetrieve)) {
-            $remoteTasksObject = $this->retrieveRemoteCollection($test, $tasksToRetrieve);                       
+            $remoteTasksObject = $this->retrieveRemoteCollection($test, $tasksToRetrieve);    
             
             foreach ($remoteTasksObject as $remoteTaskObject) {                
                 $task = (isset($tasks[$remoteTaskObject->id])) ? $tasks[$remoteTaskObject->id] : new Task();
@@ -242,16 +249,35 @@ class TaskService extends CoreApplicationService {
     }
     
     
-    private function populateOutputfromRemoteOutputObject(Task $task, $remoteOutputObject) {                
-        $taskOutput = new Output();
-        $taskOutput->setContent($remoteOutputObject->output);
-        $taskOutput->setType($task->getType());
-        $taskOutput->setErrorCount($remoteOutputObject->error_count);
-        $taskOutput->setWarningCount($remoteOutputObject->warning_count);
-        $taskOutput->setTask($task);        
+    private function populateOutputfromRemoteOutputObject(Task $task, $remoteOutputObject) {        
+        $output = new Output();
+        $output->setContent($remoteOutputObject->output);
+        $output->setType($task->getType());
+        $output->setErrorCount($remoteOutputObject->error_count);
+        $output->setWarningCount($remoteOutputObject->warning_count);      
+        $output->generateHash();
         
-        $task->setOutput($taskOutput);
+        $existingOutput = $this->getTaskOutputEntityRepository()->findOutputByhash($output->getHash());
+        
+        if (!is_null($existingOutput)) {
+            $output = $existingOutput;
+        }
+        
+        $task->setOutput($output);
     }
+    
+    
+    /**
+     * 
+     * @return \SimplyTestable\WebClientBundle\Repository\TaskOutputRepository
+     */
+    private function getTaskOutputEntityRepository() {
+        if (is_null($this->taskOutputRepository)) {
+            $this->taskOutputRepository = $this->entityManager->getRepository('SimplyTestable\WebClientBundle\Entity\Task\Output');
+        }
+        
+        return $this->taskOutputRepository;
+    }    
     
     
     /**
@@ -279,7 +305,7 @@ class TaskService extends CoreApplicationService {
      * @param array $remoteTaskIds
      * @return array 
      */
-    private function retrieveRemoteCollection(Test $test, $remoteTaskIds) {
+    private function retrieveRemoteCollection(Test $test, $remoteTaskIds) {        
         $httpRequest = $this->getAuthorisedHttpRequest(
             $this->getUrl('test_tasks', array(
                 'canonical-url' => (string)$test->getWebsite(),
