@@ -77,16 +77,24 @@ class TestService extends CoreApplicationService {
         $this->taskOutputService = $taskOutputService;
         $this->logger = $logger;
         $this->taskService = $taskService;
-    }     
+    } 
     
     
-    public function start($canonicalUrl, TestOptions $testOptions) {
+    public function persist(Test $test) {
+        $this->entityManager->persist($test);
+        $this->entityManager->flush();
+    }
+    
+    
+    public function start($canonicalUrl, TestOptions $testOptions, $testType = 'full site') {
         $httpRequest = $this->getAuthorisedHttpRequest(
             $this->getUrl('test_start', array(
             'canonical-url' => $canonicalUrl
         ))); 
         
-        $queryData = array();
+        $queryData = array(
+            'type' => $testType
+        );
         
         if ($testOptions->hasTestTypes()) {
             $queryData['test-types'] = $testOptions->getTestTypes();
@@ -161,7 +169,7 @@ class TestService extends CoreApplicationService {
      * @param int $testId
      * @return Test
      */
-    public function get($canonicalUrl, $testId, User $user) {                        
+    public function get($canonicalUrl, $testId, User $user) {
         if ($this->hasEntity($testId)) {           
             /* @var $test Test */
             $this->currentTest = $this->fetchEntity($testId);          
@@ -196,7 +204,7 @@ class TestService extends CoreApplicationService {
      * @return boolean
      */
     private function hasEntity($testId) {        
-        return $this->getEntityRepository()->hasById($testId);
+        return $this->getEntityRepository()->hasByTestId($testId);
     }
     
     
@@ -315,13 +323,14 @@ class TestService extends CoreApplicationService {
      * @return \SimplyTestable\WebClientBundle\Entity\Test\Test 
      */
     private function createTestFromRemoteTestSummary() {        
-        $remoteTestSummary = $this->getRemoteTestSummary();        
+        $remoteTestSummary = $this->getRemoteTestSummary();                
 
         $this->currentTest->setState($remoteTestSummary->state);
         $this->currentTest->setUser($remoteTestSummary->user);
         $this->currentTest->setWebsite(new NormalisedUrl($remoteTestSummary->website));
         $this->currentTest->setTestId($remoteTestSummary->id);
         $this->currentTest->setUrlCount($remoteTestSummary->url_count);        
+        $this->currentTest->setType($remoteTestSummary->type);
         
         $taskTypes = array();
         foreach ($remoteTestSummary->task_types as $taskTypeDetail) {
@@ -416,7 +425,7 @@ class TestService extends CoreApplicationService {
     
     /**
      *
-     * @return \Doctrine\ORM\EntityRepository
+     * @return \SimplyTestable\WebClientBundle\Repository\TestRepository
      */
     public function getEntityRepository() {
         if (is_null($this->entityRepository)) {

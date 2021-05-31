@@ -77,16 +77,16 @@
                                         Validator error   
                                     {% endif %}                                        
                                 {% elseif task.state == 'completed' %}
-                                    {% if task.output.result.hasErrors %}
+                                    {% if task.output.hasErrors %}
                                         <span class="label label-important">Failed</span><span class="label label-important">
-                                            <a href="#error-list">{{ task.output.result.getErrorCount }} error{% if task.output.result.getErrorCount != 1 %}s{% endif %}</a>
+                                            <a href="#error-list">{{ task.output.getErrorCount }} error{% if task.output.getErrorCount != 1 %}s{% endif %}</a>
                                         </span>
                                     {% else %}
                                         <span class="label label-success">Passed</span>
                                     {% endif %}                                        
-                                    {% if task.output.result.hasWarnings %}
+                                    {% if task.output.hasWarnings %}
                                     <span class="label label-info">
-                                        <a href="#warning-list">{{ task.output.result.getWarningCount }} warning{% if task.output.result.getWarningCount != 1 %}s{% endif %}</a>
+                                        <a href="#warning-list">{{ task.output.getWarningCount }} warning{% if task.output.getWarningCount != 1 %}s{% endif %}</a>
                                     </span>                                            
                                     {% endif %}
                                 {% endif %}
@@ -100,7 +100,7 @@
             </section>
         </div>
 
-        {% if (task.state == 'completed' or task.state == 'failed' or task.state == 'failed-no-retry-available' or task.state == 'failed-retry-limit-reached') and (task.output.result.hasErrors or task.output.result.hasWarnings) %}
+        {% if (task.state == 'completed' or task.state == 'failed' or task.state == 'failed-no-retry-available' or task.state == 'failed-retry-limit-reached') and (task.output.hasErrors or task.output.hasWarnings) %}
         <div class="row-fluid">
             {% if task.state == 'failed' or task.state == 'failed-no-retry-available' or task.state == 'failed-retry-limit-reached' %}
             <section>                
@@ -273,13 +273,21 @@
                 </div>
                 <div class="clearfix"></div>
             </section>                 
-            {% else %}
-                {% if task.output.result.hasErrors %}
+            {% else %}                
+                {% if task.output.hasErrors %}
                 <span id="error-list" class="section-marker"></span>
             <section>                
                 <div class="span12">
-                    <h2 class="info"><i class="icon-ban-circle"></i> Errors ({{ task.output.result.errorCount }}) </h2>                    
+                    <h2 class="info"><i class="icon-ban-circle"></i> Errors ({{ task.output.errorCount }}) </h2>                    
                     {% if task.type == 'CSS validation' %}
+                        {% if task.output.hasErrors and not task.output.result.hasErrors %}
+                    <div class="span12 notification" id="task-summary">
+                        <p>
+                            Detailed results from this test are no longer available.
+                        </p>
+                    </div>
+                        {% endif %}                     
+                    
                         {% for ref,errors in errors_by_ref %}
                         <div>
                             <h3><i class="icon icon-file"></i> {% if ref == '' %}Inline in your HTML{% else %}{{ ref }}{% endif %}:</h3>                            
@@ -293,6 +301,14 @@
                         </div>
                         {% endfor %}
                     {% elseif task.type == 'JS static analysis' %}
+                        {% if task.output.hasErrors and not task.output.result.hasErrors %}
+                    <div class="span12 notification" id="task-summary">
+                        <p>
+                            Detailed results from this test are no longer available.
+                        </p>
+                    </div>
+                        {% endif %}                     
+                    
                         {% for context,errors in errors_by_js_context %}
                         <div>
                             <h3><i class="{% if errors[0].isException %}icon icon-ban-circle{% else %}icon icon-file{% endif %}"></i> {% if context == 'inline' %}Inline in your HTML{% else %}{{ context }}{% endif %}:</h3>                            
@@ -306,7 +322,17 @@
                         </div>
                         {% endfor %}
                     {% else %}
+                        {% if task.output.hasErrors and not task.output.result.hasErrors %}
+                    <div class="span12 notification" id="task-summary">
+                        <p>
+                            Detailed results from this test are no longer available.
+                        </p>
+                    </div>
+                        {% endif %}                    
+                    
                     <ul class="errors">
+
+                        
                         {% for error in task.output.result.getErrors %}
                             <li>
                                 {% if task.type == 'HTML validation' %}
