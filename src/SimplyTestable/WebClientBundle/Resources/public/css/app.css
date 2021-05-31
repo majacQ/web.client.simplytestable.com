@@ -450,7 +450,8 @@ body.app-progress form .larger input {
     padding: 14px 9px 13px 9px;      
 }
 
-body.app #input .btn-primary {
+body.app #input .btn-primary,
+body.app-results #input .btn-primary {    
     width:20%;
 }
 
@@ -728,6 +729,18 @@ body.app-progress .test-options-advanced ul {
 
 body.app-progress .test-options-advanced ul li {
    margin-bottom: 4px;
+}
+
+body.app-results-preparing h1 {
+    margin-bottom: 40px;
+}
+
+body.app-results-preparing .summary {
+    margin-top: 30px;    
+}
+
+body.app-results-preparing #completion-percent {
+
 }
 
 @media (min-width: 1200px) {

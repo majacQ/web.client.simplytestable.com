@@ -8,26 +8,26 @@ use SimplyTestable\BaseMigrationsBundle\Migration\BaseMigration,
 /**
  * Auto-generated Migration: Please modify to your need!
  */
-class Version20120925115659 extends BaseMigration
+class Version20130122160055_add_Test_type extends BaseMigration
 {
     public function up(Schema $schema)
     {        
         $this->statements['mysql'] = array(
-            "ALTER TABLE TaskOutput ADD errorCount INT NOT NULL"            
+            "ALTER TABLE Test ADD type VARCHAR(255) DEFAULT NULL"            
         );
         
-        $this->statements['sqlite'] = array(
-            "ALTER TABLE TaskOutput ADD errorCount INT NOT NULL DEFAULT 0"
+        $this->statements['sqlite'] = array( 
+            "ALTER TABLE Test ADD type VARCHAR(255) DEFAULT NULL"
         );        
-        
-   
+     
         parent::up($schema);
     }
 
     public function down(Schema $schema)
-    {
+    {      
+        
         $this->statements['mysql'] = array(
-            "ALTER TABLE TaskOutput DROP errorCount"            
+            "ALTER TABLE Test DROP type"        
         );
         
         $this->statements['sqlite'] = array(

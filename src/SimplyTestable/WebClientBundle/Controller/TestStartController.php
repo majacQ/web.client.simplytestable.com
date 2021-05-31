@@ -34,7 +34,7 @@ class TestStartController extends BaseController
             return $this->redirect($this->generateUrl('app', $this->getRedirectValues($testOptions), true));                
         }
         
-        $jsonResponseObject = $this->getTestService()->start($this->getTestUrl(), $testOptions)->getContentObject();
+        $jsonResponseObject = $this->getTestService()->start($this->getTestUrl(), $testOptions, ($this->isFullTest() ? 'full site' : 'single url'))->getContentObject();
         return $this->redirect($this->generateUrl(
             'app_progress',
             array(
@@ -142,10 +142,7 @@ class TestStartController extends BaseController
      * 
      * @return array
      */
-    private function getTestTypes() {
-        var_dump($this->getRequestValues(HTTP_METH_POST));
-        exit();
-        
+    private function getTestTypes() {        
         $testTypes = array();
         
         foreach ($this->allowedTestTypeMap as $testTypeKey => $testTypeName) {
